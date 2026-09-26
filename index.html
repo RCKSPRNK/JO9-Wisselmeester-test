@@ -782,7 +782,6 @@ function populateLineupSelects() {
 
         currentSchedule.present.forEach((player, index) => {
 
-            // Spelers die volgens het wisselschema op de bank zitten
             if (benchIndexes.includes(index)) {
                 return;
             }
@@ -810,19 +809,19 @@ function populateLineupSelects() {
     updateLineup();
 }
 
+
 function updateLineup() {
 
-    const selectedPlayers = {};
+    const selectedPlayerIds =
+        lineupPositions
+            .map(position => {
 
-    lineupPositions.forEach(position => {
+                const select =
+                    document.getElementById(`position-${position}`);
 
-        const select =
-            document.getElementById(`position-${position}`);
-
-        if (select && select.value) {
-            selectedPlayers[position] = select.value;
-        }
-    });
+                return select ? select.value : "";
+            })
+            .filter(value => value !== "");
 
     lineupPositions.forEach(position => {
 
@@ -843,100 +842,14 @@ function updateLineup() {
                 return;
             }
 
-            const selectedElsewhere =
-                Object.entries(selectedPlayers).some(
-                    ([otherPosition, playerId]) =>
-                        otherPosition !== position &&
-                        String(playerId) === String(option.value)
-                );
-
-            option.hidden = selectedElsewhere;
+            option.hidden =
+                option.value !== currentValue &&
+                selectedPlayerIds.includes(option.value);
         });
 
         const player =
             currentSchedule.present.find(
                 p => String(p.id) === String(currentValue)
-            );
-
-        name.textContent =
-            player ? player.name : "Naam";
-    });
-}
-
-
-function closeLineup() {
-
-    document.getElementById(
-        "lineupModal"
-    ).style.display = "none";
-
-}
-
-function populateLineupSelects() {
-
-    const benchIndexes =
-        currentSchedule.benchSchedule[currentLineupRound] || [];
-
-    lineupPositions.forEach(position => {
-
-        const select =
-            document.getElementById(`position-${position}`);
-
-        if (!select) return;
-
-        select.innerHTML =
-            `<option value="">Kies speler</option>`;
-
-        currentSchedule.present.forEach((player, index) => {
-
-            if (benchIndexes.includes(index)) {
-                return;
-            }
-
-            const option =
-                document.createElement("option");
-
-            option.value = player.id;
-            option.textContent = player.name;
-
-            select.appendChild(option);
-
-        });
-
-    });
-
-    const benchContainer =
-        document.getElementById("lineupBenchPlayers");
-
-    if (benchContainer) {
-
-        benchContainer.innerHTML =
-            benchIndexes
-                .map(index =>
-                    `<div>🔴 ${currentSchedule.present[index].name}</div>`
-                )
-                .join("");
-    }
-
-    updateLineup();
-}
-
-
-function updateLineup() {
-
-    lineupPositions.forEach(position => {
-
-        const select =
-            document.getElementById(`position-${position}`);
-
-        const name =
-            document.getElementById(`name-${position}`);
-
-        if (!select || !name) return;
-
-        const player =
-            currentSchedule.present.find(
-                p => String(p.id) === String(select.value)
             );
 
         name.textContent =
