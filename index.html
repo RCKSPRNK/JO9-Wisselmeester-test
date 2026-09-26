@@ -209,6 +209,91 @@ button {
     color: #17212b;
 }
 
+.lineup-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 1000;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.lineup-modal-content {
+    max-width: 900px;
+    margin: 20px auto;
+    background: white;
+    border-radius: 18px;
+    padding: 20px;
+}
+
+.football-field {
+    position: relative;
+    width: 100%;
+    max-width: 500px;
+    aspect-ratio: 0.72;
+    margin: 20px auto;
+    background: #159447;
+    border: 4px solid white;
+}
+
+.football-field::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 3px;
+    background: white;
+}
+
+.position {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    text-align: center;
+}
+
+.position select {
+    width: 110px;
+    padding: 6px;
+}
+
+.position span {
+    display: block;
+    background: white;
+    margin-top: 4px;
+    padding: 2px 5px;
+}
+
+.position-top-left {
+    left: 28%;
+    top: 25%;
+}
+
+.position-top-right {
+    left: 72%;
+    top: 25%;
+}
+
+.position-center {
+    left: 50%;
+    top: 50%;
+}
+
+.position-bottom-left {
+    left: 28%;
+    top: 72%;
+}
+
+.position-bottom-right {
+    left: 72%;
+    top: 72%;
+}
+
+.position-goalkeeper {
+    left: 50%;
+    top: 90%;
+}
+    
 button:hover {
     opacity: .9;
 }
@@ -581,7 +666,32 @@ const STORAGE_VERSION = 3;
 let players = loadPlayers();
 let matches = loadMatches();
 let currentSchedule = null;
+let currentLineupRound = null;
 
+const lineupPositions = [
+    "top-left",
+    "top-right",
+    "center",
+    "bottom-left",
+    "bottom-right",
+    "goalkeeper"
+];
+
+function openLineup(roundIndex) {
+
+    if (!currentSchedule) {
+        return;
+    }
+
+    currentLineupRound = roundIndex;
+
+    document.getElementById("lineupRoundTitle").textContent =
+        `Ronde ${roundIndex + 1} · 10 minuten`;
+
+    document.getElementById("lineupModal").style.display = "block";
+
+    populateLineupSelects();
+}
 
 /* -----------------------------
    OPSLAG
@@ -3065,6 +3175,76 @@ function watchPlayersFromFirebase() {
         });
 
 </script>
-    
+<div id="lineupModal" class="lineup-modal" style="display:none;">
+
+    <div class="lineup-modal-content">
+
+        <h2>⚽ Kies opstelling</h2>
+
+        <p id="lineupRoundTitle"></p>
+
+        <div class="football-field">
+
+            <div class="position position-top-left">
+                <select id="position-top-left" onchange="updateLineup()">
+                    <option value="">Kies speler</option>
+                </select>
+                <span id="name-top-left">Naam</span>
+            </div>
+
+            <div class="position position-top-right">
+                <select id="position-top-right" onchange="updateLineup()">
+                    <option value="">Kies speler</option>
+                </select>
+                <span id="name-top-right">Naam</span>
+            </div>
+
+            <div class="position position-center">
+                <select id="position-center" onchange="updateLineup()">
+                    <option value="">Kies speler</option>
+                </select>
+                <span id="name-center">Naam</span>
+            </div>
+
+            <div class="position position-bottom-left">
+                <select id="position-bottom-left" onchange="updateLineup()">
+                    <option value="">Kies speler</option>
+                </select>
+                <span id="name-bottom-left">Naam</span>
+            </div>
+
+            <div class="position position-bottom-right">
+                <select id="position-bottom-right" onchange="updateLineup()">
+                    <option value="">Kies speler</option>
+                </select>
+                <span id="name-bottom-right">Naam</span>
+            </div>
+
+            <div class="position position-goalkeeper">
+                <select id="position-goalkeeper" onchange="updateLineup()">
+                    <option value="">Kies speler</option>
+                </select>
+                <span id="name-goalkeeper">Naam</span>
+            </div>
+
+        </div>
+
+        <h3>🔴 WISSEL</h3>
+
+        <div id="lineupBenchPlayers">
+            Kies eerst spelers.
+        </div>
+
+        <button
+            type="button"
+            class="secondary"
+            onclick="closeLineup()"
+        >
+            SLUITEN
+        </button>
+
+    </div>
+
+</div>    
 </body>
 </html>
