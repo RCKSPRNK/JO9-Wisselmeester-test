@@ -209,6 +209,17 @@ button {
     color: #17212b;
 }
 
+.lineup-preview {
+    padding: 10px 16px;
+    background: #eef3f7;
+    font-size: 14px;
+    color: #17212b;
+}
+
+.lineup-preview strong {
+    margin-right: 6px;
+}
+    
 .lineup-modal {
     position: fixed;
     inset: 0;
@@ -770,6 +781,9 @@ function populateLineupSelects() {
     const benchIndexes =
         currentSchedule.benchSchedule[currentLineupRound] || [];
 
+    const savedLineup =
+        currentSchedule.lineups?.[currentLineupRound] || {};
+
     lineupPositions.forEach(position => {
 
         const select =
@@ -794,6 +808,9 @@ function populateLineupSelects() {
 
             select.appendChild(option);
         });
+
+        select.value =
+            savedLineup[position] || "";
     });
 
     const benchContainer =
@@ -807,6 +824,7 @@ function populateLineupSelects() {
             .join("");
 
     updateLineup();
+}
 }
 
 function updateLineup() {
@@ -854,6 +872,24 @@ function updateLineup() {
         name.textContent =
             player ? player.name : "Naam";
     });
+
+    if (currentSchedule && currentLineupRound !== null) {
+
+        currentSchedule.lineups[currentLineupRound] = {};
+
+        lineupPositions.forEach(position => {
+
+            const select =
+                document.getElementById(`position-${position}`);
+
+            if (select && select.value) {
+                currentSchedule.lineups[currentLineupRound][position] =
+                    select.value;
+            }
+        });
+
+        renderLineupPreview(currentLineupRound);
+    }
 }
     
 function closeLineup() {
@@ -864,6 +900,43 @@ function closeLineup() {
     if (modal) {
         modal.style.display = "none";
     }
+}
+
+function renderLineupPreview(roundIndex) {
+
+    const preview =
+        document.getElementById(`lineupPreview-${roundIndex}`);
+
+    if (!preview) return;
+
+    const lineup =
+        currentSchedule?.lineups?.[roundIndex];
+
+    if (!lineup) {
+        preview.innerHTML =
+            "⚽ Opstelling nog niet gekozen.";
+        return;
+    }
+
+    const names = lineupPositions
+        .map(position => {
+
+            const playerId =
+                lineup[position];
+
+            const player =
+                currentSchedule.present.find(
+                    p => String(p.id) === String(playerId)
+                );
+
+            return player ? player.name : "";
+        })
+        .filter(name => name !== "");
+
+    preview.innerHTML =
+        names.length
+            ? `<strong>⚽ Opstelling:</strong> ${names.join(" · ")}`
+            : "⚽ Opstelling nog niet gekozen.";
 }
     
 /* -----------------------------
@@ -1638,15 +1711,16 @@ const present =
     benchSchedule
 };
 
-displaySchedule(
+currentSchedule = {
     matchDate,
     matchTime,
     matchHomeAway,
     opponent,
     present,
     playCounts,
-    benchSchedule
-);
+    benchSchedule,
+    lineups: {}
+};
 }
 
 
@@ -1757,13 +1831,20 @@ document.getElementById(
 
                         </div>
 
-            <button
-                type="button"
-                class="lineup-button"
-                onclick="openLineup(${r})"
-            >
-                ⚽ KIES OPSTELLING
-            </button>
+<div
+    id="lineupPreview-${r}"
+    class="lineup-preview"
+>
+    ⚽ Opstelling nog niet gekozen.
+</div>
+
+<button
+    type="button"
+    class="lineup-button"
+    onclick="openLineup(${r})"
+>
+    ⚽ KIES OPSTELLING
+</button>
         `;
 
         rounds.appendChild(div);
