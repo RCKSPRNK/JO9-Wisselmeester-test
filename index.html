@@ -809,7 +809,6 @@ function populateLineupSelects() {
     updateLineup();
 }
 
-
 function updateLineup() {
 
     const selectedPlayerIds =
@@ -838,11 +837,11 @@ function updateLineup() {
         [...select.options].forEach(option => {
 
             if (!option.value) {
-                option.hidden = false;
+                option.disabled = false;
                 return;
             }
 
-            option.hidden =
+            option.disabled =
                 option.value !== currentValue &&
                 selectedPlayerIds.includes(option.value);
         });
@@ -856,8 +855,7 @@ function updateLineup() {
             player ? player.name : "Naam";
     });
 }
-
-
+    
 function closeLineup() {
 
     const modal =
