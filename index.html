@@ -1701,17 +1701,7 @@ const present =
         return;
     }
 
-    currentSchedule = {
-    matchDate,
-    matchTime,
-    matchHomeAway,
-    opponent,
-    present,
-    playCounts,
-    benchSchedule
-};
-
-currentSchedule = {
+   currentSchedule = {
     matchDate,
     matchTime,
     matchHomeAway,
@@ -1721,6 +1711,16 @@ currentSchedule = {
     benchSchedule,
     lineups: {}
 };
+
+displaySchedule(
+    matchDate,
+    matchTime,
+    matchHomeAway,
+    opponent,
+    present,
+    playCounts,
+    benchSchedule
+); 
 }
 
 
