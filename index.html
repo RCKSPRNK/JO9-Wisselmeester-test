@@ -1,0 +1,3070 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JO9 Wisselmeester</title>
+
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+<link rel="manifest" href="manifest.json">
+
+<style>
+
+    .match-row {
+    width: 100%;
+    border: 1px solid #d8e0e8;
+    border-radius: 14px;
+    background: #ffffff;
+    padding: 16px 18px;
+    margin-bottom: 10px;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    font-family: inherit;
+    color: #17212b;
+}
+
+.match-row:hover {
+    background: #f5f7fa;
+}
+
+.match-date {
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 15px;
+}
+
+.match-info {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.match-location {
+    font-size: 15px;
+    white-space: nowrap;
+}
+
+.match-opponent {
+    font-size: 17px;
+}
+
+.match-players {
+    font-size: 14px;
+    color: #617080;
+    margin-left: auto;
+    white-space: normal;
+    flex-shrink: 0;
+}
+
+.match-arrow {
+    font-size: 28px;
+    font-weight: bold;
+    color: #617080;
+}
+    
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f3f6f9;
+    color: #17212b;
+}
+
+.container {
+    width: 100%;
+    max-width: 850px;
+    margin: auto;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+header {
+    background: #17212b;
+    color: white;
+    padding: 24px;
+    border-radius: 18px;
+    margin-bottom: 20px;
+}
+
+header h1 {
+    margin: 0 0 6px;
+    font-size: 28px;
+}
+
+header p {
+    margin: 0;
+    opacity: .8;
+}
+
+.card {
+    background: white;
+    border-radius: 18px;
+    padding: 20px;
+    margin-bottom: 18px;
+    box-shadow: 0 3px 12px rgba(0,0,0,.08);
+}
+
+h2 {
+    margin-top: 0;
+}
+
+.players {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+}
+.match-details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+.match-details label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-weight: bold;
+}
+
+.match-details input,
+.match-details select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #dfe5ea;
+    border-radius: 10px;
+    font-size: 16px;
+    background: white;
+}
+
+@media (max-width: 600px) {
+
+    .match-details {
+        grid-template-columns: 1fr;
+    }
+
+}
+    
+.player {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #dfe5ea;
+    border-radius: 12px;
+}
+
+.player input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+}
+
+.player-name {
+    font-weight: bold;
+}
+
+.history {
+    margin-left: auto;
+    color: #6c7780;
+    font-size: 13px;
+}
+
+button {
+    border: none;
+    border-radius: 12px;
+    padding: 14px 20px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.primary {
+    background: #17212b;
+    color: white;
+    width: 100%;
+    margin-top: 15px;
+}
+
+.secondary {
+    background: #e8edf1;
+    color: #17212b;
+}
+
+button:hover {
+    opacity: .9;
+}
+
+.error {
+    background: #ffe5e5;
+    color: #9b1c1c;
+    padding: 14px;
+    border-radius: 12px;
+    margin-top: 15px;
+}
+
+.rounds {
+    display: grid;
+    gap: 14px;
+}
+
+.round {
+    border: 2px solid #dfe5ea;
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.round-header {
+    background: #17212b;
+    color: white;
+    padding: 13px 16px;
+    font-weight: bold;
+}
+
+.round-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+}
+
+.playing,
+.bench {
+    padding: 16px;
+}
+
+.playing {
+    background: #f1f8f2;
+}
+
+.bench {
+    background: #fff5f2;
+}
+
+.playing h3,
+.bench h3 {
+    margin-top: 0;
+    font-size: 15px;
+}
+
+.playing ul,
+.bench ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.playing li,
+.bench li {
+    padding: 5px 0;
+}
+
+.minutes-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.minutes-table th,
+.minutes-table td {
+    padding: 9px;
+    border-bottom: 1px solid #e2e7eb;
+    text-align: left;
+}
+
+.minutes-table th {
+    background: #f5f7f9;
+}
+
+.small {
+    color: #6c7780;
+    font-size: 13px;
+}
+
+@media (max-width: 600px) {
+
+    .round-body {
+        grid-template-columns: 1fr;
+    }
+
+    .container {
+        width: 100vw;
+        max-width: 100vw;
+        padding: 12px;
+        box-sizing: border-box;
+    }
+
+    .card,
+    header,
+    button,
+    input,
+    select,
+    table {
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    html,
+    body {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+    <h1>⚽ JO9 Wisselmeester</h1>
+    <p>Automatisch en eerlijk wisselschema</p>
+</header>
+
+<div class="card">
+
+    <h2>1. Nieuwe wedstrijd</h2>
+
+    <p class="small">
+        Vul eerst de wedstrijdgegevens in en geef daarna aan
+        welke spelers aanwezig zijn.
+    </p>
+
+    <h3>Wedstrijdgegevens</h3>
+
+    <div class="match-details">
+
+        <label>
+            📅 Datum
+            <input
+                type="date"
+                id="matchDate"
+            >
+        </label>
+
+        <label>
+            🕐 Tijd
+            <input
+                type="time"
+                id="matchTime"
+            >
+        </label>
+
+        <label>
+            🏠 Thuis / Uit
+            <select id="matchHomeAway">
+                <option value="thuis">Thuis</option>
+                <option value="uit">Uit</option>
+            </select>
+        </label>
+
+        <label>
+            🆚 Tegenstander
+            <input
+                type="text"
+                id="opponent"
+                placeholder="Naam tegenstander"
+            >
+        </label>
+
+    </div>
+
+    <h3>2. Aanwezigheid</h3>
+
+    <div id="players" class="players"></div>
+
+    <button class="primary" onclick="generateSchedule()">
+        ⚽ MAAK WISSELSCHEMA
+    </button>
+
+    <div id="error"></div>
+
+</div>
+
+<div id="scheduleSection" class="card" style="display:none;">
+    <h2>3. Wisselschema</h2>
+
+    <p id="summary" class="small"></p>
+
+    <div id="rounds" class="rounds"></div>
+
+    <button class="primary" onclick="finishMatch()">
+        WEDSTRIJD AFRONDEN & SPEELTIJD OPSLAAN
+    </button>
+</div>
+
+<div class="card">
+
+    <h2>4. 📊 Historische speeltijd</h2>
+
+    <button
+        type="button"
+        class="management-toggle"
+        onclick="toggleHistoricalMinutes()"
+    >
+        <span>📊 Historische speeltijd</span>
+        <span id="historicalMinutesArrow">▶</span>
+    </button>
+
+    <div
+        id="historicalMinutesContent"
+        style="display:none;"
+    >
+
+        <p class="small">
+            Deze stand wordt gebruikt om volgende wedstrijden eerlijker te verdelen.
+        </p>
+
+        <table class="minutes-table">
+            <thead>
+    <tr>
+        <th>Speler</th>
+        <th>Aanwezig</th>
+        <th>Afwezig</th>
+        <th>Speeltijd</th>
+    </tr>
+</thead>
+            <tbody id="minutesTable"></tbody>
+        </table>
+
+    </div>
+
+</div>
+    
+<div class="card">
+
+    <h2>5. 🏟️ Wedstrijden</h2>
+
+    <button
+        type="button"
+        class="management-toggle"
+        onclick="toggleMatches()"
+    >
+        <span>🏟️ Wedstrijden</span>
+        <span id="matchesArrow">▶</span>
+    </button>
+
+    <div
+        id="matchesContent"
+        style="display:none;"
+    >
+
+        <div id="matchesList"></div>
+
+    </div>
+
+</div>
+  <div class="card">
+
+    <h2>6. ⚙️ Beheer</h2>
+
+    <button
+    type="button"
+    class="management-toggle"
+    onclick="togglePlayerManagement()"
+>
+    <span>👥 Spelers beheren</span>
+    <span id="playerManagementArrow">▶</span>
+</button>
+
+    <div
+        id="playerManagementContent"
+        style="display:none;"
+    >
+
+        <p class="small">
+            Voeg spelers toe of verwijder spelers uit het team.
+        </p>
+
+        <div id="managePlayers"></div>
+
+        <button
+            class="primary"
+            onclick="showAddPlayerForm()"
+        >
+            ➕ SPELER TOEVOEGEN
+        </button>
+
+    </div>
+
+    <button
+    type="button"
+    class="management-toggle"
+    onclick="toggleSeasonReset()"
+>
+    <span>🔄 Seizoen resetten</span>
+    <span id="seasonResetArrow">▶</span>
+</button>
+
+    <div
+        id="seasonResetContent"
+        style="display:none;"
+    >
+
+        <p class="small">
+            Klaar voor een nieuw seizoen? Zet alle speeltijd,
+            voordeelgeschiedenis en wedstrijdgegevens terug naar nul.
+        </p>
+
+        <button
+            class="secondary"
+            onclick="resetSeason()"
+        >
+            🔄 SEIZOEN RESETTEN
+        </button>
+
+    </div>
+
+</div>
+
+<script>
+
+/*
+===========================================================
+JO9 WISSELMEESTER
+===========================================================
+
+BELANGRIJKSTE REGEL:
+
+De app probeert na de wedstrijd de totale speeltijd
+van alle kinderen zo gelijk mogelijk te maken.
+
+Voorbeeld:
+
+7 spelers aanwezig
+4 rondes
+6 spelers spelen per ronde
+
+Er zijn 24 speelplaatsen.
+
+De app zoekt dan automatisch welke spelers 40 minuten
+en welke spelers 30 minuten krijgen, rekening houdend
+met hun historische speeltijd.
+
+Daarna bepaalt hij in welke ronde iedereen op de bank zit.
+
+===========================================================
+*/
+
+
+const DEFAULT_PLAYERS = [
+    { id: 1, name: "Lucas Mertens", history: 0 },
+    { id: 2, name: "Boaz Kaufmann", history: 0 },
+    { id: 3, name: "Divano Morais", history: 0 },
+    { id: 4, name: "Teun Uffelen", history: 0 },
+    { id: 5, name: "Lotte Koolmees", history: 0 },
+    { id: 6, name: "Kayleigh Degenkamp", history: 0 },
+    { id: 7, name: "Mace Spronk", history: 0 },
+    { id: 8, name: "Levi de Bruijn", history: 0 }
+];
+const STORAGE_VERSION = 3;
+    
+let players = loadPlayers();
+let matches = loadMatches();
+let currentSchedule = null;
+
+
+/* -----------------------------
+   OPSLAG
+----------------------------- */
+
+
+
+function loadPlayers() {
+
+    const saved =
+        localStorage.getItem("jo9_players");
+
+
+    /*
+    Als er al spelersgegevens zijn opgeslagen,
+    behouden we deze.
+
+    We voegen alleen nieuwe velden toe als die
+    nog niet bestaan.
+    */
+
+    if (saved) {
+
+        try {
+
+            const parsed =
+                JSON.parse(saved);
+
+
+            return parsed.map(player => ({
+
+                ...player,
+
+                history:
+                    player.history || 0,
+
+                advantageHistory:
+                    Array.isArray(player.advantageHistory)
+                        ? player.advantageHistory
+                        : []
+
+            }));
+
+        } catch (error) {
+
+            console.error(
+                "Kon opgeslagen spelers niet laden:",
+                error
+            );
+
+        }
+
+    }
+
+
+    /*
+    Als er nog geen gegevens zijn,
+    begin met de standaardspelers.
+    */
+
+    const freshPlayers =
+        JSON.parse(
+            JSON.stringify(DEFAULT_PLAYERS)
+        );
+
+
+    localStorage.setItem(
+        "jo9_players",
+        JSON.stringify(freshPlayers)
+    );
+
+
+    localStorage.setItem(
+        "jo9_storage_version",
+        String(STORAGE_VERSION)
+    );
+
+
+    return freshPlayers;
+}
+
+function savePlayers() {
+
+    localStorage.setItem(
+        "jo9_players",
+        JSON.stringify(players)
+    );
+
+    localStorage.setItem(
+        "jo9_storage_version",
+        String(STORAGE_VERSION)
+    );
+
+    if (
+        window.jo9Firebase &&
+        window.jo9Firebase.savePlayersToFirebase
+    ) {
+        window.jo9Firebase.savePlayersToFirebase(players);
+    }
+}
+    
+    /* =====================================================
+   WEDSTRIJDHISTORIE
+   ===================================================== */
+
+function loadMatches() {
+
+    const saved =
+        localStorage.getItem("jo9_matches");
+
+
+    if (!saved) {
+        return [];
+    }
+
+
+    try {
+
+        const parsed =
+            JSON.parse(saved);
+
+
+        return Array.isArray(parsed)
+            ? parsed
+            : [];
+
+    } catch (error) {
+
+        console.error(
+            "Kon wedstrijdhistorie niet laden:",
+            error
+        );
+
+
+        return [];
+    }
+}
+
+
+function saveMatches() {
+
+    localStorage.setItem(
+        "jo9_matches",
+        JSON.stringify(matches)
+    );
+}
+
+
+/* -----------------------------
+   SPELERS TONEN
+----------------------------- */
+
+function renderPlayers() {
+
+    const container = document.getElementById("players");
+
+    container.innerHTML = "";
+
+    players.forEach(player => {
+
+        const div = document.createElement("div");
+
+        div.className = "player";
+
+        div.innerHTML = `
+            <input
+                type="checkbox"
+                id="player-${player.id}"
+                value="${player.id}"
+            >
+
+            <label for="player-${player.id}">
+                <span class="player-name">${player.name}</span>
+            </label>
+
+            <span class="history">
+                ${player.history} min
+            </span>
+        `;
+
+        container.appendChild(div);
+    });
+
+    renderMinutes();
+}
+
+
+/* -----------------------------
+   AANWEZIGE SPELERS
+----------------------------- */
+
+function getPresentPlayers() {
+
+    const checked = [
+        ...document.querySelectorAll(
+            '#players input[type="checkbox"]:checked'
+        )
+    ];
+
+    return checked.map(input =>
+        players.find(p => p.id == input.value)
+    );
+}
+
+
+/* =========================================================
+   DE EERLIJKHEIDSMOTOR
+   ========================================================= */
+
+/*
+We bepalen eerst hoeveel minuten iedere speler vandaag
+idealiter moet spelen.
+
+Dat doen we NIET door simpelweg iedereen hetzelfde aantal
+minuten te geven.
+
+We kijken naar:
+
+    historische minuten
+    +
+    minuten van vandaag
+
+Het doel is:
+
+    historische minuten + vandaag
+
+zo gelijk mogelijk maken.
+
+Bij 7 spelers zijn er bijvoorbeeld:
+
+    24 speelplaatsen
+
+Dus:
+
+    3 spelers = 4 rondes
+    4 spelers = 3 rondes
+
+De app bepaalt welke spelers die extra ronde verdienen.
+*/
+
+
+function findIdealPlayCounts(present) {
+
+    const n = present.length;
+    const totalPlaySlots = 6 * 4;
+
+    /*
+        BASISVERDELING
+
+        Eerst krijgt iedereen hetzelfde minimale aantal
+        speelrondes.
+
+        8 spelers = 3 rondes per speler
+        7 spelers = 3 rondes + 3 voordeelrondes
+        6 spelers = 4 rondes per speler
+        9 spelers = 2 rondes + 6 voordeelrondes
+    */
+
+    const minimumRounds =
+        Math.floor(totalPlaySlots / n);
+
+    const extraRounds =
+        totalPlaySlots % n;
+
+    const counts =
+        Array(n).fill(minimumRounds);
+
+
+    /*
+        VOORDEELCYCLUS
+
+        We kijken alleen naar eerdere wedstrijden
+        met EXACT hetzelfde aantal aanwezige spelers.
+
+        Dus bij 7 spelers:
+        - eerdere wedstrijd met 7 telt mee
+        - wedstrijd met 8 telt niet mee
+        - wedstrijd met 9 telt niet mee
+
+        Een speler die eerder voordeel kreeg,
+        komt daardoor niet automatisch opnieuw
+        als eerste aan de beurt.
+    */
+
+    const ranking = present
+        .map((player, index) => {
+
+            const advantageHistory =
+                Array.isArray(player.advantageHistory)
+                    ? player.advantageHistory
+                    : [];
+
+            const relevantAdvantages =
+                advantageHistory.filter(
+                    item =>
+                        Number(item.playerCount) === n
+                );
+
+            const advantageCount =
+                relevantAdvantages.length;
+
+            const lastAdvantage =
+                advantageCount > 0
+                    ? Math.max(
+                        ...relevantAdvantages.map(
+                            item =>
+                                Number(item.matchNumber) || 0
+                        )
+                    )
+                    : 0;
+
+            return {
+                index,
+                advantageCount,
+                lastAdvantage,
+                history:
+                    Number(player.history) || 0
+            };
+        })
+
+
+        /*
+            VOLGORDE:
+
+            1. Minst vaak voordeel gehad
+            2. Langst geleden voordeel gehad
+            3. Bij volledige gelijkstand:
+               laagste totale speeltijd
+            4. Als laatste de oorspronkelijke volgorde
+        */
+
+        .sort((a, b) => {
+
+            if (
+                a.advantageCount !==
+                b.advantageCount
+            ) {
+                return (
+                    a.advantageCount -
+                    b.advantageCount
+                );
+            }
+
+            if (
+                a.lastAdvantage !==
+                b.lastAdvantage
+            ) {
+                return (
+                    a.lastAdvantage -
+                    b.lastAdvantage
+                );
+            }
+
+            if (
+                a.history !==
+                b.history
+            ) {
+                return (
+                    a.history -
+                    b.history
+                );
+            }
+
+            return a.index - b.index;
+        });
+
+
+    /*
+        Geef de extra speelrondes aan de
+        eerlijkst gerangschikte spelers.
+    */
+
+    for (
+        let i = 0;
+        i < extraRounds;
+        i++
+    ) {
+        counts[ranking[i].index]++;
+    }
+
+
+    return counts;
+}
+function buildSchedule(present, playCounts) {
+
+    const n = present.length;
+
+    const benchCount = n - 6;
+
+    /*
+    benchRounds[playerIndex] = rondes waarin speler bank zit
+    */
+
+    let benchRounds = Array.from(
+        { length: n },
+        () => []
+    );
+
+    /*
+    Iedere speler moet:
+
+    4 - speelrondes
+
+    keer op de bank zitten.
+    */
+
+    const requiredBench = playCounts.map(
+        count => 4 - count
+    );
+
+    /*
+    We gebruiken backtracking om een geldige verdeling
+    te vinden.
+    */
+
+    let bestSchedule = null;
+    let bestScore = Infinity;
+
+    const rounds = [];
+
+    function recurse(round) {
+
+        if (round === 4) {
+
+            /*
+            Controleer aantallen.
+            */
+
+            for (let i = 0; i < n; i++) {
+
+                if (
+                    benchRounds[i].length !==
+                    requiredBench[i]
+                ) {
+                    return;
+                }
+            }
+
+            /*
+            Bereken kwaliteit van dit schema.
+            */
+
+            let score = 0;
+
+            /*
+            Straf dezelfde speler op de bank in
+            opeenvolgende rondes.
+            */
+
+            for (let i = 0; i < n; i++) {
+
+                for (
+                    let j = 1;
+                    j < benchRounds[i].length;
+                    j++
+                ) {
+
+                    if (
+                        benchRounds[i][j] ===
+                        benchRounds[i][j-1] + 1
+                    ) {
+                        score += 100;
+                    }
+                }
+            }
+
+            /*
+            Straf dezelfde bankcombinaties.
+            */
+
+            for (let r1 = 0; r1 < 4; r1++) {
+
+                for (
+                    let r2 = r1 + 1;
+                    r2 < 4;
+                    r2++
+                ) {
+
+                    const a = rounds[r1]
+                        .slice()
+                        .sort((x,y) => x-y);
+
+                    const b = rounds[r2]
+                        .slice()
+                        .sort((x,y) => x-y);
+
+                    if (
+                        JSON.stringify(a) ===
+                        JSON.stringify(b)
+                    ) {
+                        score += 50;
+                    }
+                }
+            }
+
+            /*
+            Lichte voorkeur om bankbeurten verspreid
+            over de wedstrijd te houden.
+            */
+
+            for (let i = 0; i < n; i++) {
+
+                if (benchRounds[i].length > 1) {
+
+                    const min =
+                        Math.min(...benchRounds[i]);
+
+                    const max =
+                        Math.max(...benchRounds[i]);
+
+                    if (max - min < 2) {
+                        score += 10;
+                    }
+                }
+            }
+
+            if (score < bestScore) {
+
+                bestScore = score;
+
+                bestSchedule =
+                    rounds.map(r => [...r]);
+            }
+
+            return;
+        }
+
+
+        /*
+        Kies mogelijke bankspelers voor deze ronde.
+        */
+
+        const combinations = combinationsOf(
+            [...Array(n).keys()],
+            benchCount
+        );
+
+        for (const combination of combinations) {
+
+            let valid = true;
+
+            /*
+            Deze speler mag niet vaker op de bank
+            dan nodig.
+            */
+
+            for (const index of combination) {
+
+                if (
+                    benchRounds[index].length >=
+                    requiredBench[index]
+                ) {
+                    valid = false;
+                    break;
+                }
+            }
+
+           if (!valid) {
+    continue;
+}
+
+/*
+Verboden wisselcombinaties.
+Deze regels zijn bewust verborgen voor de gebruiker.
+*/
+
+const namesOnBench =
+    combination.map(
+        index => present[index].name
+    );
+
+if (
+    namesOnBench.includes("Divano Morais") &&
+    namesOnBench.includes("Teun Uffelen")
+) {
+    valid = false;
+}
+
+if (
+    namesOnBench.includes("Levi de Bruijn") &&
+    namesOnBench.includes("Lotte Koolmees")
+) {
+    valid = false;
+}
+
+if (!valid) {
+    continue;
+}
+
+/*
+Voeg bankronde toe.
+*/
+
+            combination.forEach(index => {
+                benchRounds[index].push(round);
+            });
+
+            rounds.push(combination);
+
+            recurse(round + 1);
+
+            rounds.pop();
+
+            combination.forEach(index => {
+                benchRounds[index].pop();
+            });
+        }
+    }
+
+    recurse(0);
+
+    return bestSchedule;
+}
+
+
+/* -----------------------------
+   COMBINATIES
+----------------------------- */
+
+function combinationsOf(array, size) {
+
+    const result = [];
+
+    function combine(start, current) {
+
+        if (current.length === size) {
+
+            result.push([...current]);
+
+            return;
+        }
+
+        for (
+            let i = start;
+            i < array.length;
+            i++
+        ) {
+
+            current.push(array[i]);
+
+            combine(
+                i + 1,
+                current
+            );
+
+            current.pop();
+        }
+    }
+
+    combine(0, []);
+
+    return result;
+}
+
+
+/* =========================================================
+   SCHEMA GENEREREN
+   ========================================================= */
+
+function generateSchedule() {
+
+    const error =
+        document.getElementById("error");
+
+    error.innerHTML = "";
+    
+const matchDate =
+    document.getElementById("matchDate").value;
+
+const matchTime =
+    document.getElementById("matchTime").value;
+
+const matchHomeAway =
+    document.getElementById("matchHomeAway").value;
+
+const opponent =
+    document.getElementById("opponent").value.trim();
+
+if (!matchDate) {
+
+    error.innerHTML = `
+        <div class="error">
+            ⚠️ Vul eerst de wedstrijddatum in.
+        </div>
+    `;
+
+    return;
+}
+
+if (!matchTime) {
+
+    error.innerHTML = `
+        <div class="error">
+            ⚠️ Vul eerst de aanvangstijd in.
+        </div>
+    `;
+
+    return;
+}
+
+if (!opponent) {
+
+    error.innerHTML = `
+        <div class="error">
+            ⚠️ Vul eerst de tegenstander in.
+        </div>
+    `;
+
+    return;
+}
+
+const present =
+    getPresentPlayers();
+
+    if (present.length < 6) {
+
+        error.innerHTML = `
+            <div class="error">
+                ⚠️ Er zijn minimaal 6 spelers nodig
+                om 6 tegen 6 te spelen.
+            </div>
+        `;
+
+        return;
+    }
+
+    /*
+    We beperken de eerste versie tot maximaal 12
+    spelers. Voor een JO9-team is dat ruim voldoende.
+    */
+
+    if (present.length > 12) {
+
+        error.innerHTML = `
+            <div class="error">
+                ⚠️ Deze eerste versie ondersteunt maximaal
+                12 aanwezige spelers.
+            </div>
+        `;
+
+        return;
+    }
+
+    const playCounts =
+        findIdealPlayCounts(present);
+
+    const benchSchedule =
+        buildSchedule(
+            present,
+            playCounts
+        );
+
+    if (!benchSchedule) {
+
+        error.innerHTML = `
+            <div class="error">
+                Er kon geen geldig schema worden gevonden.
+            </div>
+        `;
+
+        return;
+    }
+
+    currentSchedule = {
+    matchDate,
+    matchTime,
+    matchHomeAway,
+    opponent,
+    present,
+    playCounts,
+    benchSchedule
+};
+
+displaySchedule(
+    matchDate,
+    matchTime,
+    matchHomeAway,
+    opponent,
+    present,
+    playCounts,
+    benchSchedule
+);
+}
+
+
+/* =========================================================
+   SCHEMA TONEN
+   ========================================================= */
+
+function displaySchedule(
+    matchDate,
+    matchTime,
+    matchHomeAway,
+    opponent,
+    present,
+    playCounts,
+    benchSchedule
+) {
+
+    document.getElementById(
+        "scheduleSection"
+    ).style.display = "block";
+
+    const benchNames =
+        benchSchedule.map(
+            indexes =>
+                indexes.map(
+                    i => present[i].name
+                )
+        );
+
+   const minimumRounds = Math.floor((6 * 4) / present.length);
+
+const advantagePlayers = present
+    .filter((player, index) => playCounts[index] > minimumRounds)
+    .map(player => player.name);
+
+const advantageText = advantagePlayers.length
+    ? `⭐ Voordeel deze wedstrijd: ${advantagePlayers.join(", ")}`
+    : `⚖️ Iedereen speelt deze wedstrijd evenveel.`;
+
+document.getElementById(
+    "summary"
+).innerHTML = `
+    <strong>⚽ ${matchHomeAway === "thuis" ? "BVV Barendrecht" : opponent} 
+    ${matchHomeAway === "thuis" ? "– " + opponent : "– BBV Barendrecht"}</strong>
+    <br>
+    📅 ${matchDate} · 🕐 ${matchTime}
+    <br>
+    ${present.length} spelers aanwezig ·
+    6 spelers tegelijk in het veld ·
+    4 rondes van 10 minuten
+    <br>
+    <strong>${advantageText}</strong>
+`;
+
+    const rounds =
+        document.getElementById("rounds");
+
+    rounds.innerHTML = "";
+
+    for (let r = 0; r < 4; r++) {
+
+        const bench =
+            benchSchedule[r];
+
+        const playing =
+            present
+                .map((player, index) => ({
+                    player,
+                    index
+                }))
+                .filter(
+                    x => !bench.includes(x.index)
+                )
+                .map(x => x.player);
+
+        const div =
+            document.createElement("div");
+
+        div.className = "round";
+
+        div.innerHTML = `
+            <div class="round-header">
+                Ronde ${r + 1} · 10 minuten
+            </div>
+
+            <div class="round-body">
+
+                <div class="playing">
+                    <h3>🟢 IN HET VELD (${playing.length})</h3>
+
+                    <ul>
+                        ${playing.map(
+                            p => `<li>⚽ ${p.name}</li>`
+                        ).join("")}
+                    </ul>
+                </div>
+
+                <div class="bench">
+                    <h3>🔴 WISSEL</h3>
+
+                    <ul>
+                        ${bench.map(
+                            index =>
+                                `<li>🔄 ${present[index].name}</li>`
+                        ).join("")}
+                    </ul>
+                </div>
+
+            </div>
+        `;
+
+        rounds.appendChild(div);
+    }
+
+    /*
+    Scroll automatisch naar het schema.
+    */
+
+    document.getElementById(
+        "scheduleSection"
+    ).scrollIntoView({
+        behavior: "smooth"
+    });
+}
+
+
+/* =========================================================
+   WEDSTRIJD AFRONDEN
+   ========================================================= */
+
+function finishMatch() {
+
+    if (!currentSchedule) {
+        return;
+    }
+
+
+  const {
+    matchDate,
+    matchTime,
+    matchHomeAway,
+    opponent,
+    present,
+    playCounts
+} = currentSchedule;
+
+
+    /*
+    Basisgegevens van deze wedstrijd.
+    */
+
+    const n = present.length;
+
+    const totalPlaySlots = 6 * 4;
+
+    const minimumRounds =
+        Math.floor(totalPlaySlots / n);
+
+
+    /*
+    Houd een wedstrijdnummer bij.
+    */
+
+    let matchNumber =
+        Number(
+            localStorage.getItem("jo9_match_counter") || 0
+        );
+
+    matchNumber++;
+
+    localStorage.setItem(
+        "jo9_match_counter",
+        String(matchNumber)
+    );
+
+
+    /*
+    Lijst met spelers die deze wedstrijd
+    voordeel kregen.
+    */
+
+    const advantageIds = [];
+
+
+    /*
+    Werk voor iedere aanwezige speler
+    de totale speeltijd bij.
+    */
+
+    const playerResults = present.map(
+        (player, index) => {
+
+            const minutes =
+                playCounts[index] * 10;
+
+
+            const stored =
+                players.find(
+                    p => p.id === player.id
+                );
+
+
+            if (stored) {
+
+                /*
+                Voeg de gespeelde minuten toe.
+                */
+
+                stored.history =
+                    (stored.history || 0) + minutes;
+
+
+                /*
+                Zorg ervoor dat iedere speler
+                een voordeelhistorie heeft.
+                */
+
+                if (!Array.isArray(stored.advantageHistory)) {
+                    stored.advantageHistory = [];
+                }
+
+
+                /*
+                Heeft deze speler meer rondes gespeeld
+                dan het normale minimum?
+
+                Dan heeft hij/zij deze wedstrijd
+                een voordeel van 10 minuten gekregen.
+                */
+
+                if (playCounts[index] > minimumRounds) {
+
+                    stored.advantageHistory.push({
+                        matchNumber: matchNumber,
+                        playerCount: n
+                    });
+
+                    advantageIds.push(player.id);
+
+                }
+
+            }
+
+
+            return {
+                playerId: player.id,
+                name: player.name,
+                minutes: minutes,
+                rounds: playCounts[index]
+            };
+
+        }
+    );
+
+
+    /*
+    Sla de volledige wedstrijd op.
+    */
+
+
+matches.push({
+
+    matchNumber: matchNumber,
+
+    date: matchDate,
+
+    time: matchTime,
+
+    homeAway: matchHomeAway,
+
+    opponent: opponent,
+
+    playerCount: n,
+
+        presentPlayerIds:
+            present.map(player => player.id),
+
+        players:
+            playerResults,
+
+        advantagePlayerIds:
+            advantageIds
+
+    });
+    if (
+        window.jo9Firebase &&
+        window.jo9Firebase.saveMatchesToFirebase
+    ) {
+        window.jo9Firebase.saveMatchesToFirebase(matches);
+    }
+
+    localStorage.setItem(
+        "jo9_matches",
+        JSON.stringify(matches)
+    );
+
+
+    /*
+    Sla ook de spelersgegevens op.
+    */
+
+    savePlayers();
+
+
+    /*
+    Geef de gebruiker een bevestiging.
+    */
+
+    alert(
+        "Wedstrijd opgeslagen! De speeltijd, voordeelverdeling en wedstrijdgegevens zijn bijgewerkt."
+    );
+
+
+    /*
+    Werk de speeltijd op het scherm bij.
+    */
+
+    renderPlayers();
+renderPlayerManagement();
+
+    /*
+    Verberg het wedstrijdschema.
+    */
+
+    document.getElementById(
+        "scheduleSection"
+    ).style.display = "none";
+
+
+    /*
+    Maak het huidige schema leeg.
+    */
+
+    currentSchedule = null;
+
+}
+
+/* =========================================================
+   SPEELTIJD TABEL
+   ========================================================= */
+
+function renderMinutes() {
+
+    const tbody =
+        document.getElementById(
+            "minutesTable"
+        );
+
+    tbody.innerHTML = "";
+
+    players
+        .slice()
+        .sort(
+            (a, b) =>
+                b.history - a.history
+        )
+        .forEach(player => {
+
+            const presentCount =
+                matches.filter(match =>
+                    Array.isArray(match.presentPlayerIds) &&
+                    match.presentPlayerIds.includes(player.id)
+                ).length;
+
+            const absentCount =
+                matches.filter(match =>
+                    Array.isArray(match.presentPlayerIds) &&
+                    !match.presentPlayerIds.includes(player.id)
+                ).length;
+
+            const row =
+                document.createElement("tr");
+
+            row.innerHTML = `
+                <td>${player.name}</td>
+                <td>${presentCount}×</td>
+                <td>${absentCount}×</td>
+                <td>
+                    <strong>${player.history} min</strong>
+                </td>
+            `;
+
+            tbody.appendChild(row);
+        });
+}
+    
+    /* =========================================================
+   SPELER TOEVOEGEN
+   ========================================================= */
+/* =========================================================
+   SPELERS BEHEREN
+   ========================================================= */
+/* =========================================================
+   BEHEER MENU UITKLAPPEN
+   ========================================================= */
+
+function togglePlayerManagement() {
+
+    const content =
+        document.getElementById(
+            "playerManagementContent"
+        );
+
+    const arrow =
+        document.getElementById(
+            "playerManagementArrow"
+        );
+
+    if (content.style.display === "none") {
+
+        content.style.display = "block";
+        arrow.textContent = "▼";
+
+        renderPlayerManagement();
+
+    } else {
+
+        content.style.display = "none";
+        arrow.textContent = "▶";
+
+    }
+
+}
+
+
+/* =========================================================
+   SEIZOEN RESET UITKLAPPEN
+   ========================================================= */
+
+function toggleSeasonReset() {
+
+    const content =
+        document.getElementById(
+            "seasonResetContent"
+        );
+
+    const arrow =
+        document.getElementById(
+            "seasonResetArrow"
+        );
+
+    if (content.style.display === "none") {
+
+        content.style.display = "block";
+        arrow.textContent = "▼";
+
+    } else {
+
+        content.style.display = "none";
+        arrow.textContent = "▶";
+
+    }
+
+}
+function toggleMatches() {
+
+    const content =
+        document.getElementById(
+            "matchesContent"
+        );
+
+    const arrow =
+        document.getElementById(
+            "matchesArrow"
+        );
+
+    if (content.style.display === "none") {
+
+        content.style.display = "block";
+        arrow.textContent = "▼";
+
+        renderMatches();
+
+    } else {
+
+        content.style.display = "none";
+        arrow.textContent = "▶";
+
+    }
+
+}
+
+function toggleHistoricalMinutes() {
+
+    const content =
+        document.getElementById(
+            "historicalMinutesContent"
+        );
+
+    const arrow =
+        document.getElementById(
+            "historicalMinutesArrow"
+        );
+
+    if (content.style.display === "none") {
+
+        content.style.display = "block";
+        arrow.textContent = "▼";
+
+        renderPlayers();
+
+    } else {
+
+        content.style.display = "none";
+        arrow.textContent = "▶";
+
+    }
+
+}
+
+/* =========================================================
+   SPELERS BEHEREN
+   ========================================================= */
+
+function renderPlayerManagement() {
+
+    const container =
+        document.getElementById("managePlayers");
+
+    if (!container) {
+        return;
+    }
+
+    container.innerHTML = "";
+
+    players.forEach(player => {
+
+        const playerRow =
+            document.createElement("button");
+
+        playerRow.type = "button";
+
+        playerRow.className =
+            "manage-player-row";
+
+        playerRow.innerHTML = `
+            <strong>${player.name}</strong>
+        `;
+
+        playerRow.onclick = function() {
+            selectPlayerForManagement(player.id);
+        };
+
+        container.appendChild(playerRow);
+
+    });
+}
+
+function showAddPlayerForm() {
+
+    const container =
+        document.getElementById("managePlayers");
+
+    container.innerHTML = `
+        <div class="add-player-form">
+
+            <label>
+                Voornaam
+                <input
+                    type="text"
+                    id="newPlayerFirstName"
+                    placeholder="Voornaam"
+                >
+            </label>
+
+            <label>
+                Achternaam
+                <input
+                    type="text"
+                    id="newPlayerLastName"
+                    placeholder="Achternaam"
+                >
+            </label>
+
+            <button
+                class="primary"
+                onclick="addPlayer()"
+            >
+                ✅ TOEVOEGEN
+            </button>
+
+            <button
+                class="secondary"
+                onclick="renderPlayerManagement()"
+            >
+                ANNULEREN
+            </button>
+
+        </div>
+    `;
+}
+
+function renderMatches() {
+
+    const container =
+        document.getElementById("matchesList");
+
+    if (!container) {
+        return;
+    }
+
+    container.innerHTML = "";
+
+    if (matches.length === 0) {
+
+        container.innerHTML = `
+            <p class="small">
+                Er zijn nog geen wedstrijden opgeslagen.
+            </p>
+        `;
+
+        return;
+    }
+
+    matches
+        .slice()
+        .reverse()
+        .forEach(match => {
+
+            const matchRow =
+                document.createElement("button");
+
+            matchRow.type = "button";
+
+            matchRow.className =
+                "match-row";
+
+            matchRow.onclick = function() {
+    const matchIndex = matches.indexOf(match);
+    showMatchDetails(matchIndex);
+};
+
+            let formattedDate =
+                match.date || "Onbekende datum";
+
+            if (match.date) {
+
+                const parts =
+                    match.date.split("-");
+
+                if (parts.length === 3) {
+
+                    formattedDate =
+                        parts[2] +
+                        "-" +
+                        parts[1] +
+                        "-" +
+                        parts[0];
+
+                }
+
+            }
+
+            matchRow.innerHTML = `
+
+                <div class="match-date">
+                    📅 ${formattedDate}
+                </div>
+
+                <div class="match-info">
+
+                    <strong class="match-opponent">
+                        ${match.opponent || "Onbekende tegenstander"}
+                    </strong>
+
+                    <span class="match-players">
+                        👥 ${match.playerCount} spelers aanwezig
+                    </span>
+
+                </div>
+
+                <div class="match-arrow">
+                    ›
+                </div>
+
+            `;
+
+            container.appendChild(matchRow);
+
+        });
+}
+    
+ function showMatchDetails(matchIndex) {
+
+    const match =
+        matches[matchIndex];
+
+    if (!match) {
+        return;
+    }
+
+    const container =
+        document.getElementById("matchesList");
+
+    if (!container) {
+        return;
+    }
+
+    const location =
+    match.homeAway === "thuis"
+        ? "🏠 Thuis"
+        : "✈️ Uit";
+
+    container.innerHTML = `
+        <div class="selected-player">
+
+            <h3>
+                ${match.date || "Onbekende datum"}
+                ${match.opponent
+                    ? " – " + match.opponent
+                    : ""
+                }
+            </h3>
+
+            <p>
+                ${location}
+            </p>
+
+            <p>
+                👥 ${match.playerCount} spelers aanwezig
+            </p>
+
+            <h4>⏱️ Speeltijd</h4>
+
+            <div id="matchPlayerDetails"></div>
+
+            ${
+                match.advantagePlayerIds?.length
+                    ? `
+                        <h4>⭐ Voordeel deze wedstrijd</h4>
+                        <div id="matchAdvantageDetails"></div>
+                      `
+                    : ""
+            }
+
+            <br>
+
+<button
+    class="secondary"
+    onclick="deleteMatch(${matchIndex})"
+>
+    🗑️ WEDSTRIJD VERWIJDEREN
+</button>
+
+            <br><br>
+
+            <button
+                class="secondary"
+                onclick="renderMatches()"
+            >
+                ← TERUG NAAR WEDSTRIJDEN
+            </button>
+
+        </div>
+    `;
+
+    const playerDetails =
+        document.getElementById("matchPlayerDetails");
+
+    match.players.forEach(player => {
+
+        const row =
+            document.createElement("p");
+
+        row.innerHTML = `
+            <strong>${player.name}</strong>
+            – ${player.minutes} minuten
+        `;
+
+        playerDetails.appendChild(row);
+
+    });
+
+    if (match.advantagePlayerIds?.length) {
+
+        const advantageDetails =
+            document.getElementById(
+                "matchAdvantageDetails"
+            );
+
+        if (advantageDetails) {
+
+            match.advantagePlayerIds.forEach(
+                playerId => {
+
+                    const player =
+                        match.players.find(
+                            player =>
+                                String(player.playerId) === 
+                                String(playerId)
+                        );
+
+                    if (player) {
+
+                        const row =
+                            document.createElement("p");
+
+                        row.innerHTML = `
+                            ⭐ <strong>${player.name}</strong>
+                        `;
+
+                        advantageDetails.appendChild(row);
+
+                    }
+
+                }
+            );
+
+        }
+
+    }
+
+} 
+
+async function deleteMatch(matchIndex) {
+
+    const match =
+    matches[matchIndex];
+
+    if (!match) {
+    return;
+}
+
+    const confirmed =
+        confirm(
+            "⚠️ Weet je het zeker?\n\n" +
+            "Wedstrijd " +
+            match.matchNumber +
+            " met " +
+            (match.opponent || "onbekende tegenstander") +
+            " wordt verwijderd.\n\n" +
+            "De historische speeltijd en voordeelgeschiedenis " +
+            "worden opnieuw berekend op basis van de overgebleven wedstrijden.\n\n" +
+            "Deze actie kan niet ongedaan worden gemaakt."
+        );
+
+    if (!confirmed) {
+        return;
+    }
+
+    /*
+    =========================================================
+    NIEUWE WEDSTRIJDLijst
+    =========================================================
+    */
+
+const newMatches =
+    matches.filter(
+        (_, index) =>
+            index !== matchIndex
+    );
+
+
+    /*
+    =========================================================
+    FIREBASE EERST BIJWERKEN
+    =========================================================
+    */
+
+    if (
+        window.jo9Firebase &&
+        window.jo9Firebase.saveMatchesToFirebase
+    ) {
+
+        const firebaseSaved =
+            await window.jo9Firebase.saveMatchesToFirebase(
+                newMatches
+            );
+
+        if (!firebaseSaved) {
+
+            alert(
+                "❌ De wedstrijd is niet verwijderd.\n\n" +
+                "De verbinding met Firebase kon de wijziging niet opslaan.\n\n" +
+                "Controleer je internetverbinding en probeer het opnieuw."
+            );
+
+            return;
+        }
+
+    }
+
+
+    /*
+    =========================================================
+    WEDSTRIJDEN LOKAAL BIJWERKEN
+    =========================================================
+    */
+
+    matches = newMatches;
+
+    localStorage.setItem(
+        "jo9_matches",
+        JSON.stringify(matches)
+    );
+
+
+    /*
+    =========================================================
+    HISTORISCHE SPEELTIJD OPNIEUW BEREKENEN
+    =========================================================
+    */
+
+    players.forEach(player => {
+
+        player.history = 0;
+
+        player.advantageHistory = [];
+
+    });
+
+
+    /*
+    Loop door alle overgebleven wedstrijden.
+    */
+
+    matches.forEach(match => {
+
+        /*
+        SPEELTIJD
+        */
+
+if (Array.isArray(match.players)) {
+
+    match.players.forEach(
+        matchPlayer => {
+
+            const player =
+                players.find(
+                    player =>
+                        String(player.id) ===
+                        String(matchPlayer.playerId)
+                );
+
+            if (player) {
+
+                player.history +=
+                    Number(
+                        matchPlayer.minutes
+                    ) || 0;
+
+            }
+
+        }
+    );
+
+}
+
+
+        /*
+        VOORDEELGESCHIEDENIS
+        */
+
+        if (
+            Array.isArray(
+                match.advantagePlayerIds
+            )
+        ) {
+
+            match.advantagePlayerIds.forEach(
+                playerId => {
+
+                    const player =
+                        players.find(
+                            player =>
+                               String(player.id) === String(playerId)
+                        );
+
+                    if (player) {
+
+                        if (
+                            !Array.isArray(
+                                player.advantageHistory
+                            )
+                        ) {
+                            player.advantageHistory = [];
+                        }
+
+                        player.advantageHistory.push({
+
+                            matchNumber:
+                                match.matchNumber,
+
+                            playerCount:
+                                match.playerCount
+
+                        });
+
+                    }
+
+                }
+            );
+
+        }
+
+    });
+
+
+    /*
+    =========================================================
+    SPELERS OPSLAAN
+    =========================================================
+    */
+
+    savePlayers();
+
+
+    /*
+    =========================================================
+    SCHERM BIJWERKEN
+    =========================================================
+    */
+
+    renderPlayers();
+
+    renderPlayerManagement();
+
+    renderMatches();
+
+
+    alert(
+        "🗑️ Wedstrijd verwijderd!\n\n" +
+        "De historische speeltijd en voordeelgeschiedenis " +
+        "zijn opnieuw berekend."
+    );
+
+} 
+    
+function selectPlayerForManagement(playerId) {
+
+    const player =
+        players.find(player => player.id === playerId);
+
+    if (!player) {
+        return;
+    }
+
+    const container =
+        document.getElementById("managePlayers");
+
+    container.innerHTML = `
+        <div class="selected-player">
+
+            <h3>👤 ${player.name}</h3>
+
+            <p class="small">
+                Speeltijd: ${player.history || 0} minuten
+            </p>
+
+            <button
+                class="secondary"
+                onclick="deletePlayer('${player.id}')"
+            >
+                🗑️ SPELER VERWIJDEREN
+            </button>
+
+            <button
+                class="secondary"
+                onclick="renderPlayerManagement()"
+            >
+                ← TERUG NAAR SPELERS
+            </button>
+
+        </div>
+    `;
+}
+    /* =========================================================
+   SPELER VERWIJDEREN
+   ========================================================= */
+
+function deletePlayer(playerId) {
+
+    const player =
+        players.find(player => player.id === playerId);
+
+    if (!player) {
+        return;
+    }
+
+    const confirmed =
+        confirm(
+            "⚠️ Weet je het zeker?\n\n" +
+            player.name +
+            " wordt volledig uit het team verwijderd.\n\n" +
+            "Ook zijn/haar historische speeltijd en voordeelgeschiedenis " +
+            "worden verwijderd.\n\n" +
+            "Deze actie kan niet ongedaan worden gemaakt."
+        );
+
+    if (!confirmed) {
+        return;
+    }
+
+    players =
+        players.filter(
+            player => player.id !== playerId
+        );
+
+    savePlayers();
+
+    renderPlayers();
+
+    renderPlayerManagement();
+
+    alert(
+        "🗑️ " +
+        player.name +
+        " is verwijderd uit het team."
+    );
+}
+/* =========================================================
+   NIEUWE SPELER OPSLAAN
+   ========================================================= */
+
+function addPlayer() {
+
+    const firstName =
+        document
+            .getElementById("newPlayerFirstName")
+            .value
+            .trim();
+
+    const lastName =
+        document
+            .getElementById("newPlayerLastName")
+            .value
+            .trim();
+
+    if (!firstName || !lastName) {
+
+        alert(
+            "Vul zowel de voornaam als achternaam in."
+        );
+
+        return;
+    }
+
+    const newPlayer = {
+
+        id:
+            Date.now().toString(),
+
+        name:
+            firstName + " " + lastName,
+
+        history: 0,
+
+        advantageHistory: []
+
+    };
+
+    players.push(newPlayer);
+
+    savePlayers();
+
+    renderPlayers();
+
+    renderPlayerManagement();
+
+    alert(
+        "✅ " +
+        newPlayer.name +
+        " is toegevoegd aan het team!"
+    );
+}
+
+    /* =========================================================
+   SEIZOENSRESET
+   ========================================================= */
+
+async function resetSeason() {
+
+    const confirmed =
+        confirm(
+            "⚠️ Weet je het zeker?\n\n" +
+            "Alle historische speeltijd, " +
+            "voordeelgeschiedenis en wedstrijdgegevens " +
+            "worden verwijderd.\n\n" +
+            "De spelers blijven behouden.\n\n" +
+            "Deze actie kan niet ongedaan worden gemaakt."
+        );
+
+    if (!confirmed) {
+        return;
+    }
+
+
+    // =========================================================
+    // WEDSTRIJDEN EERST IN FIREBASE WISSEN
+    // =========================================================
+
+    if (
+        window.jo9Firebase &&
+        window.jo9Firebase.saveMatchesToFirebase
+    ) {
+
+        const firebaseReset =
+            await window.jo9Firebase.saveMatchesToFirebase([]);
+
+        if (!firebaseReset) {
+
+            alert(
+                "❌ De seizoensreset is niet uitgevoerd.\n\n" +
+                "De verbinding met Firebase kon de wedstrijdgegevens " +
+                "niet wissen.\n\n" +
+                "Controleer je internetverbinding en probeer het opnieuw."
+            );
+
+            return;
+
+        }
+
+    }
+
+
+    // =========================================================
+    // SPEELTIJD EN VOORDEELGESCHIEDENIS RESETTEN
+    // =========================================================
+
+    players.forEach(player => {
+
+        player.history = 0;
+        player.advantageHistory = [];
+
+    });
+
+
+    // =========================================================
+    // WEDSTRIJDEN LOKAAL RESETTEN
+    // =========================================================
+
+    matches = [];
+
+    localStorage.removeItem(
+        "jo9_matches"
+    );
+
+    localStorage.removeItem(
+        "jo9_match_counter"
+    );
+
+
+    // =========================================================
+    // SPELERS OPSLAAN
+    // =========================================================
+
+    savePlayers();
+
+
+    // =========================================================
+    // SCHERM BIJWERKEN
+    // =========================================================
+
+    renderPlayers();
+
+    renderPlayerManagement();
+
+    renderMatches();
+
+    currentSchedule = null;
+
+
+    document.getElementById(
+        "scheduleSection"
+    ).style.display = "none";
+
+
+    // =========================================================
+    // BEVESTIGING
+    // =========================================================
+
+    alert(
+        "🔄 Het seizoen is gereset!\n\n" +
+        "Alle speeltijden, voordeelgeschiedenis " +
+        "en wedstrijden zijn gewist.\n\n" +
+        "De spelers zijn behouden."
+    );
+
+}
+
+
+/* =========================================================
+   START
+   ========================================================= */
+
+renderPlayers();
+
+</script>
+
+<script type="module">
+
+    import {
+        initializeApp
+    } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+
+
+    import {
+        getAuth,
+        signInAnonymously
+    } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+
+
+    import {
+        getDatabase,
+        ref,
+        get,
+        set,
+        onValue
+    } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-database.js";
+
+
+    import {
+        initializeAppCheck,
+        ReCaptchaEnterpriseProvider
+    } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app-check.js";
+
+
+    const firebaseConfig = {
+
+        apiKey:
+            "AIzaSyBr10MJwdm3tR-Kc-ks2tLIGbOX_zkM6kk",
+
+        authDomain:
+            "jo9-wisselmeester.firebaseapp.com",
+
+        projectId:
+            "jo9-wisselmeester",
+
+        storageBucket:
+            "jo9-wisselmeester.firebasestorage.app",
+
+        messagingSenderId:
+            "757290271996",
+
+        appId:
+            "1:757290271996:web:a74bcbd439cd3eb26dc379",
+
+        databaseURL:
+            "https://jo9-wisselmeester-default-rtdb.europe-west1.firebasedatabase.app"
+
+    };
+
+
+    // =========================================================
+    // FIREBASE STARTEN
+    // =========================================================
+
+    const app =
+        initializeApp(firebaseConfig);
+
+
+    // =========================================================
+    // APP CHECK STARTEN
+    // =========================================================
+
+    initializeAppCheck(app, {
+
+        provider:
+            new ReCaptchaEnterpriseProvider(
+                "6LfuH7YtAAAAAIMq4wcRiAZdCuZlti40t6MQDNXO"
+            ),
+
+        isTokenAutoRefreshEnabled:
+            true
+
+    });
+
+
+    // =========================================================
+    // AUTHENTICATIE STARTEN
+    // =========================================================
+
+    const auth =
+        getAuth(app);
+
+
+    // =========================================================
+    // REALTIME DATABASE STARTEN
+    // =========================================================
+
+    const db =
+        getDatabase(
+            app,
+            firebaseConfig.databaseURL
+        );
+
+
+    // =========================================================
+    // SPELERS OPSLAAN IN FIREBASE
+    // =========================================================
+
+    async function savePlayersToFirebase(playerList) {
+
+        try {
+
+            await set(
+                ref(db, "team/players"),
+                playerList
+            );
+
+            console.log(
+                "☁️ Spelerslijst opgeslagen in Firebase."
+            );
+
+        } catch (error) {
+
+            console.error(
+                "❌ Spelers opslaan in Firebase mislukt:",
+                error
+            );
+
+        }
+
+    }
+
+
+    // =========================================================
+    // WEDSTRIJDEN OPSLAAN IN FIREBASE
+    // =========================================================
+
+async function saveMatchesToFirebase(matchList) {
+
+    try {
+
+        await set(
+            ref(db, "team/matches"),
+            matchList
+        );
+
+        console.log(
+            "☁️ Wedstrijden opgeslagen in Firebase."
+        );
+
+        return true;
+
+    } catch (error) {
+
+        console.error(
+            "❌ Wedstrijden opslaan in Firebase mislukt:",
+            error
+        );
+
+        return false;
+
+    }
+
+}
+
+
+    // =========================================================
+    // WEDSTRIJDEN LADEN VANUIT FIREBASE
+    // =========================================================
+
+    async function loadMatchesFromFirebase() {
+
+        try {
+
+            const matchesRef =
+                ref(db, "team/matches");
+
+
+            const snapshot =
+                await get(matchesRef);
+
+
+            if (!snapshot.exists()) {
+
+                console.log(
+                    "☁️ Geen wedstrijden gevonden in Firebase."
+                );
+
+                return [];
+
+            }
+
+
+            const firebaseMatches =
+                Object.values(snapshot.val());
+
+
+            console.log(
+                "☁️ Wedstrijden vanuit Firebase geladen."
+            );
+
+
+            return firebaseMatches;
+
+        } catch (error) {
+
+            console.error(
+                "❌ Wedstrijden laden vanuit Firebase mislukt:",
+                error
+            );
+
+            return [];
+
+        }
+
+    }
+
+
+    // =========================================================
+    // WEDSTRIJDEN REALTIME VOLGEN
+    // =========================================================
+
+   function watchMatchesFromFirebase() {
+
+    const matchesRef =
+        ref(db, "team/matches");
+
+
+    onValue(
+        matchesRef,
+        snapshot => {
+
+            if (!snapshot.exists()) {
+
+                matches = [];
+
+            } else {
+
+                matches =
+                    Object.values(snapshot.val());
+
+            }
+
+
+            localStorage.setItem(
+                "jo9_matches",
+                JSON.stringify(matches)
+            );
+
+
+            renderMatches();
+
+
+            console.log(
+                "🔄 Wedstrijden realtime bijgewerkt."
+            );
+
+        }
+    );
+
+}
+    
+// =========================================================
+// SPELERS REALTIME VOLGEN
+// =========================================================
+
+function watchPlayersFromFirebase() {
+
+    const playersRef =
+        ref(db, "team/players");
+
+    onValue(
+        playersRef,
+        snapshot => {
+
+            if (!snapshot.exists()) {
+                return;
+            }
+
+            players =
+                Object.values(
+                    snapshot.val()
+                ).map(player => ({
+                    ...player,
+                    history:
+                        player.history || 0,
+                    advantageHistory:
+                        Array.isArray(player.advantageHistory)
+                            ? player.advantageHistory
+                            : []
+                }));
+
+            localStorage.setItem(
+                "jo9_players",
+                JSON.stringify(players)
+            );
+
+            renderPlayers();
+
+            renderPlayerManagement();
+
+            console.log(
+                "🔄 Spelers realtime bijgewerkt."
+            );
+
+        }
+    );
+
+}
+
+    // =========================================================
+    // FIREBASE BESCHIKBAAR MAKEN VOOR DE BESTAANDE APP
+    // =========================================================
+
+    window.jo9Firebase = {
+
+        app:
+            app,
+
+        auth:
+            auth,
+
+        db:
+            db,
+
+        savePlayersToFirebase:
+            savePlayersToFirebase,
+
+        saveMatchesToFirebase:
+            saveMatchesToFirebase,
+
+        loadMatchesFromFirebase:
+            loadMatchesFromFirebase,
+
+        watchMatchesFromFirebase:
+            watchMatchesFromFirebase
+
+    };
+
+
+    // =========================================================
+    // ANONIEME GEBRUIKER AANMELDEN
+    // =========================================================
+
+    signInAnonymously(auth)
+
+        .then(async () => {
+
+            console.log(
+                "✅ Firebase anonieme gebruiker aangemeld."
+            );
+
+
+            // -------------------------------------------------
+            // SPELERS LADEN
+            // -------------------------------------------------
+
+            const playersRef =
+                ref(db, "team/players");
+
+
+            const playersSnapshot =
+                await get(playersRef);
+
+
+            if (!playersSnapshot.exists()) {
+
+                await set(
+                    playersRef,
+                    players
+                );
+
+                console.log(
+                    "☁️ Huidige spelerslijst naar Firebase gekopieerd."
+                );
+
+            } else {
+
+                players =
+                    Object.values(
+                        playersSnapshot.val()
+                    );
+
+                savePlayers();
+
+                renderPlayers();
+
+                console.log(
+                    "☁️ Spelerslijst vanuit Firebase geladen."
+                );
+
+            }
+
+
+            // -------------------------------------------------
+            // WEDSTRIJDEN LADEN
+            // -------------------------------------------------
+
+            matches =
+                await loadMatchesFromFirebase();
+
+
+            renderMatches();
+
+
+            // -------------------------------------------------
+            // REALTIME WEDSTRIJDEN AANZETTEN
+            // -------------------------------------------------
+
+            watchMatchesFromFirebase();
+            watchPlayersFromFirebase();
+
+
+        })
+
+        .catch(error => {
+
+            console.error(
+                "❌ Firebase synchronisatie mislukt:",
+                error
+            );
+
+        });
+
+</script>
+    
+</body>
+</html>
