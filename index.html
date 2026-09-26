@@ -827,6 +827,89 @@ function closeLineup() {
     ).style.display = "none";
 
 }
+
+function populateLineupSelects() {
+
+    const benchIndexes =
+        currentSchedule.benchSchedule[currentLineupRound] || [];
+
+    lineupPositions.forEach(position => {
+
+        const select =
+            document.getElementById(`position-${position}`);
+
+        if (!select) return;
+
+        select.innerHTML =
+            `<option value="">Kies speler</option>`;
+
+        currentSchedule.present.forEach((player, index) => {
+
+            if (benchIndexes.includes(index)) {
+                return;
+            }
+
+            const option =
+                document.createElement("option");
+
+            option.value = player.id;
+            option.textContent = player.name;
+
+            select.appendChild(option);
+
+        });
+
+    });
+
+    const benchContainer =
+        document.getElementById("lineupBenchPlayers");
+
+    if (benchContainer) {
+
+        benchContainer.innerHTML =
+            benchIndexes
+                .map(index =>
+                    `<div>🔴 ${currentSchedule.present[index].name}</div>`
+                )
+                .join("");
+    }
+
+    updateLineup();
+}
+
+
+function updateLineup() {
+
+    lineupPositions.forEach(position => {
+
+        const select =
+            document.getElementById(`position-${position}`);
+
+        const name =
+            document.getElementById(`name-${position}`);
+
+        if (!select || !name) return;
+
+        const player =
+            currentSchedule.present.find(
+                p => String(p.id) === String(select.value)
+            );
+
+        name.textContent =
+            player ? player.name : "Naam";
+    });
+}
+
+
+function closeLineup() {
+
+    const modal =
+        document.getElementById("lineupModal");
+
+    if (modal) {
+        modal.style.display = "none";
+    }
+}
     
 /* -----------------------------
    OPSLAG
