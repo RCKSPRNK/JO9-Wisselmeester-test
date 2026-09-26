@@ -960,19 +960,34 @@ function updateLineup() {
     
 function closeLineup() {
 
+    if (currentSchedule && currentLineupRound !== null) {
+
+        const lineup = {};
+
+        lineupPositions.forEach(position => {
+
+            const select =
+                document.getElementById(
+                    `position-${position}`
+                );
+
+            if (select && select.value) {
+                lineup[position] = select.value;
+            }
+
+        });
+
+        currentSchedule.lineups[currentLineupRound] =
+            lineup;
+
+        renderLineupPreview(currentLineupRound);
+    }
+
     const modal =
         document.getElementById("lineupModal");
 
     if (modal) {
         modal.style.display = "none";
-    }
-
-    if (currentSchedule && currentLineupRound !== null) {
-
-        currentSchedule.lineups[currentLineupRound] =
-            currentSchedule.lineups[currentLineupRound] || {};
-
-        renderLineupPreview(currentLineupRound);
     }
 }
 
