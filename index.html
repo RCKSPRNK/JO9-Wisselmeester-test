@@ -209,30 +209,82 @@ button {
     color: #17212b;
 }
 
-.lineup-preview {
-    padding: 10px 16px;
-    background: #eef3f7;
-    font-size: 14px;
-    color: #17212b;
-}
-
-.lineup-preview strong {
-    margin-right: 6px;
-}
-
 .lineup-bench-preview {
     margin-top: 14px;
-    padding: 12px;
-    background: #dff3e4;
-    border-radius: 10px;
-    color: #17212b;
-    font-weight: 600;
-    font-size: 15px;
 }
 
-.lineup-bench-preview strong {
-    display: block;
-    margin-bottom: 6px;
+.lineup-mini-field {
+    position: relative;
+    width: 100%;
+    height: 190px;
+    background: #159447;
+    border: 2px solid white;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.lineup-mini-field::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 2px;
+    background: white;
+}
+
+.mini-position {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    background: white;
+    color: #17212b;
+    padding: 4px 7px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.mini-top-left {
+    left: 28%;
+    top: 25%;
+}
+
+.mini-top-right {
+    left: 72%;
+    top: 25%;
+}
+
+.mini-center {
+    left: 50%;
+    top: 50%;
+}
+
+.mini-bottom-left {
+    left: 28%;
+    top: 72%;
+}
+
+.mini-bottom-right {
+    left: 72%;
+    top: 72%;
+}
+
+.mini-goalkeeper {
+    left: 50%;
+    top: 90%;
+}
+
+.mini-lineup-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 13px;
+    text-align: center;
 }
     
 .lineup-modal {
@@ -914,43 +966,88 @@ function closeLineup() {
     if (modal) {
         modal.style.display = "none";
     }
+
+    if (currentSchedule && currentLineupRound !== null) {
+
+        currentSchedule.lineups[currentLineupRound] =
+            currentSchedule.lineups[currentLineupRound] || {};
+
+        renderLineupPreview(currentLineupRound);
+    }
 }
 
 function renderLineupPreview(roundIndex) {
 
     const preview =
-        document.getElementById(`lineupPreview-${roundIndex}`);
+        document.getElementById(
+            `lineupBenchPreview-${roundIndex}`
+        );
 
     if (!preview) return;
 
     const lineup =
         currentSchedule?.lineups?.[roundIndex];
 
-    if (!lineup) {
-        preview.innerHTML =
-            "⚽ Opstelling nog niet gekozen.";
+    if (!lineup || Object.keys(lineup).length === 0) {
+
+        preview.innerHTML = `
+            <div class="lineup-mini-field">
+                <div class="mini-lineup-empty">
+                    ⚽ Opstelling nog niet gekozen.
+                </div>
+            </div>
+        `;
+
         return;
     }
 
-    const names = lineupPositions
-        .map(position => {
+    const positions = {
+        "top-left": "mini-top-left",
+        "top-right": "mini-top-right",
+        "center": "mini-center",
+        "bottom-left": "mini-bottom-left",
+        "bottom-right": "mini-bottom-right",
+        "goalkeeper": "mini-goalkeeper"
+    };
 
-            const playerId =
-                lineup[position];
+    const playerNames = {};
 
-            const player =
-                currentSchedule.present.find(
-                    p => String(p.id) === String(playerId)
-                );
+    lineupPositions.forEach(position => {
 
-            return player ? player.name : "";
-        })
-        .filter(name => name !== "");
+        const playerId =
+            lineup[position];
 
-    preview.innerHTML =
-        names.length
-            ? `<strong>⚽ Opstelling:</strong> ${names.join(" · ")}`
-            : "⚽ Opstelling nog niet gekozen.";
+        const player =
+            currentSchedule.present.find(
+                p => String(p.id) === String(playerId)
+            );
+
+        playerNames[position] =
+            player
+                ? player.name.split(" ")[0]
+                : "";
+    });
+
+    preview.innerHTML = `
+        <div class="lineup-mini-field">
+
+            ${lineupPositions.map(position => {
+
+                const name =
+                    playerNames[position];
+
+                return `
+                    <div
+                        class="mini-position ${positions[position]}"
+                    >
+                        ${name || "—"}
+                    </div>
+                `;
+
+            }).join("")}
+
+        </div>
+    `;
 }
     
 /* -----------------------------
@@ -1864,7 +1961,9 @@ document.getElementById(
 
         rounds.appendChild(div);
     }
-
+    for (let r = 0; r < 4; r++) {
+        renderLineupPreview(r);
+    }
     /*
     Scroll automatisch naar het schema.
     */
@@ -1874,6 +1973,7 @@ document.getElementById(
     ).scrollIntoView({
         behavior: "smooth"
     });
+
 }
 
 
@@ -1894,7 +1994,8 @@ function finishMatch() {
     matchHomeAway,
     opponent,
     present,
-    playCounts
+    playCounts,
+    lineups
 } = currentSchedule;
 
 
@@ -2472,6 +2573,10 @@ function renderMatches() {
 
             <h4>⏱️ Speeltijd</h4>
 
+            <h4>⚽ Opstellingen</h4>
+
+<div id="savedLineups"></div>
+
             <div id="matchPlayerDetails"></div>
 
             ${
@@ -2506,7 +2611,35 @@ function renderMatches() {
 
     const playerDetails =
         document.getElementById("matchPlayerDetails");
+const savedLineups =
+    document.getElementById("savedLineups");
 
+if (savedLineups && match.lineups) {
+
+    Object.keys(match.lineups).forEach(round => {
+
+        const lineup = match.lineups[round];
+
+        if (!lineup) return;
+
+        const row =
+            document.createElement("div");
+
+        row.className = "lineup-bench-preview";
+
+        row.innerHTML = `
+            <strong>Ronde ${Number(round) + 1}</strong><br>
+            ${lineup.field?.join(" • ") || ""}
+            ${lineup.bench?.length
+                ? `<br>Wissel: ${lineup.bench.join(" • ")}`
+                : ""
+            }
+        `;
+
+        savedLineups.appendChild(row);
+
+    });
+}
     match.players.forEach(player => {
 
         const row =
