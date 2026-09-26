@@ -219,6 +219,21 @@ button {
 .lineup-preview strong {
     margin-right: 6px;
 }
+
+.lineup-bench-preview {
+    margin-top: 14px;
+    padding: 12px;
+    background: #dff3e4;
+    border-radius: 10px;
+    color: #17212b;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.lineup-bench-preview strong {
+    display: block;
+    margin-bottom: 6px;
+}
     
 .lineup-modal {
     position: fixed;
@@ -1817,7 +1832,7 @@ document.getElementById(
                     </ul>
                 </div>
 
-                <div class="bench">
+                                <div class="bench">
                     <h3>🔴 WISSEL</h3>
 
                     <ul>
@@ -1826,6 +1841,13 @@ document.getElementById(
                                 `<li>🔄 ${present[index].name}</li>`
                         ).join("")}
                     </ul>
+
+                    <div
+                        id="lineupBenchPreview-${r}"
+                        class="lineup-bench-preview"
+                    >
+                        ⚽ Opstelling nog niet gekozen.
+                    </div>
                 </div>
 
                         </div>
@@ -1996,29 +2018,26 @@ function finishMatch() {
 
 
 matches.push({
-
     matchNumber: matchNumber,
-
     date: matchDate,
-
     time: matchTime,
-
     homeAway: matchHomeAway,
-
     opponent: opponent,
-
     playerCount: n,
 
-        presentPlayerIds:
-            present.map(player => player.id),
+    presentPlayerIds:
+        present.map(player => player.id),
 
-        players:
-            playerResults,
+    players:
+        playerResults,
 
-        advantagePlayerIds:
-            advantageIds
+    advantagePlayerIds:
+        advantageIds,
 
-    });
+    lineups:
+        currentSchedule.lineups
+});
+    
     if (
         window.jo9Firebase &&
         window.jo9Firebase.saveMatchesToFirebase
