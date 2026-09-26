@@ -767,6 +767,9 @@ function openLineup(roundIndex) {
 
 function populateLineupSelects() {
 
+    const benchIndexes =
+        currentSchedule.benchSchedule[currentLineupRound] || [];
+
     lineupPositions.forEach(position => {
 
         const select =
@@ -777,7 +780,12 @@ function populateLineupSelects() {
         select.innerHTML =
             `<option value="">Kies speler</option>`;
 
-        currentSchedule.present.forEach(player => {
+        currentSchedule.present.forEach((player, index) => {
+
+            // Spelers die volgens het wisselschema op de bank zitten
+            if (benchIndexes.includes(index)) {
+                return;
+            }
 
             const option =
                 document.createElement("option");
@@ -786,16 +794,35 @@ function populateLineupSelects() {
             option.textContent = player.name;
 
             select.appendChild(option);
-
         });
-
     });
+
+    const benchContainer =
+        document.getElementById("lineupBenchPlayers");
+
+    benchContainer.innerHTML =
+        benchIndexes
+            .map(index =>
+                `<div>🔴 ${currentSchedule.present[index].name}</div>`
+            )
+            .join("");
 
     updateLineup();
 }
 
-
 function updateLineup() {
+
+    const selectedPlayers = {};
+
+    lineupPositions.forEach(position => {
+
+        const select =
+            document.getElementById(`position-${position}`);
+
+        if (select && select.value) {
+            selectedPlayers[position] = select.value;
+        }
+    });
 
     lineupPositions.forEach(position => {
 
@@ -807,16 +834,33 @@ function updateLineup() {
 
         if (!select || !name) return;
 
+        const currentValue = select.value;
+
+        [...select.options].forEach(option => {
+
+            if (!option.value) {
+                option.hidden = false;
+                return;
+            }
+
+            const selectedElsewhere =
+                Object.entries(selectedPlayers).some(
+                    ([otherPosition, playerId]) =>
+                        otherPosition !== position &&
+                        String(playerId) === String(option.value)
+                );
+
+            option.hidden = selectedElsewhere;
+        });
+
         const player =
             currentSchedule.present.find(
-                p => String(p.id) === String(select.value)
+                p => String(p.id) === String(currentValue)
             );
 
         name.textContent =
             player ? player.name : "Naam";
-
     });
-
 }
 
 
