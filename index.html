@@ -70,6 +70,17 @@
     font-weight: bold;
     color: #617080;
 }
+
+.saved-lineups {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.saved-lineups .lineup-mini-field {
+    margin-top: 0;
+}
     
 * {
     box-sizing: border-box;
@@ -152,6 +163,50 @@ h2 {
 @media (max-width: 600px) {
 
     .match-details {
+        grid-template-columns: 1fr;
+    }
+
+    .match-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 6px 10px;
+        padding: 14px;
+        min-width: 0;
+    }
+
+    .match-date {
+        min-width: 0;
+        grid-column: 1;
+        font-size: 14px;
+    }
+
+    .match-info {
+        min-width: 0;
+        grid-column: 1 / -1;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+
+    .match-opponent {
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+
+    .match-players {
+        margin-left: 0;
+        max-width: 100%;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .match-arrow {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .saved-lineups {
         grid-template-columns: 1fr;
     }
 
@@ -2614,7 +2669,7 @@ function renderMatches() {
 
             <h4>⚽ Opstellingen</h4>
 
-<div id="savedLineups"></div>
+            <div id="savedLineups" class="saved-lineups"></div>
 
             <div id="matchPlayerDetails"></div>
 
@@ -2650,35 +2705,67 @@ function renderMatches() {
 
     const playerDetails =
         document.getElementById("matchPlayerDetails");
-const savedLineups =
-    document.getElementById("savedLineups");
 
-if (savedLineups && match.lineups) {
+    const savedLineups =
+        document.getElementById("savedLineups");
 
-    Object.keys(match.lineups).forEach(round => {
+    if (savedLineups && match.lineups) {
 
-        const lineup = match.lineups[round];
+        const positionClasses = {
+            "top-left": "mini-top-left",
+            "top-right": "mini-top-right",
+            "center": "mini-center",
+            "bottom-left": "mini-bottom-left",
+            "bottom-right": "mini-bottom-right",
+            "goalkeeper": "mini-goalkeeper"
+        };
 
-        if (!lineup) return;
+        Object.keys(match.lineups)
+            .sort((a, b) => Number(a) - Number(b))
+            .forEach(round => {
 
-        const row =
-            document.createElement("div");
+                const lineup = match.lineups[round];
 
-        row.className = "lineup-bench-preview";
+                if (!lineup || Object.keys(lineup).length === 0) {
+                    return;
+                }
 
-        row.innerHTML = `
-            <strong>Ronde ${Number(round) + 1}</strong><br>
-            ${lineup.field?.join(" • ") || ""}
-            ${lineup.bench?.length
-                ? `<br>Wissel: ${lineup.bench.join(" • ")}`
-                : ""
-            }
-        `;
+                const field =
+                    document.createElement("div");
 
-        savedLineups.appendChild(row);
+                field.className = "lineup-mini-field";
 
-    });
-}
+                field.innerHTML = lineupPositions
+                    .map(position => {
+
+                        const playerId = lineup[position];
+
+                        const player =
+                            match.players.find(
+                                p =>
+                                    String(p.playerId) ===
+                                    String(playerId)
+                            );
+
+                        const name = player
+                            ? player.name.split(" ")[0]
+                            : "—";
+
+                        return `
+                            <div
+                                class="mini-position ${positionClasses[position]}"
+                            >
+                                ${name}
+                            </div>
+                        `;
+                    })
+                    .join("");
+
+                savedLineups.appendChild(field);
+
+            });
+    }
+
     match.players.forEach(player => {
 
         const row =
