@@ -206,10 +206,6 @@ h2 {
         grid-row: 1;
     }
 
-    .saved-lineups {
-        grid-template-columns: 1fr;
-    }
-
 }
     
 .player {
@@ -2667,8 +2663,6 @@ function renderMatches() {
 
             <h4>⏱️ Speeltijd</h4>
 
-            <div id="savedLineups" class="saved-lineups"></div>
-
             <div id="matchPlayerDetails"></div>
 
             ${
@@ -2703,66 +2697,6 @@ function renderMatches() {
 
     const playerDetails =
         document.getElementById("matchPlayerDetails");
-
-    const savedLineups =
-        document.getElementById("savedLineups");
-
-    if (savedLineups && match.lineups) {
-
-        const positionClasses = {
-            "top-left": "mini-top-left",
-            "top-right": "mini-top-right",
-            "center": "mini-center",
-            "bottom-left": "mini-bottom-left",
-            "bottom-right": "mini-bottom-right",
-            "goalkeeper": "mini-goalkeeper"
-        };
-
-        Object.keys(match.lineups)
-            .sort((a, b) => Number(a) - Number(b))
-            .forEach(round => {
-
-                const lineup = match.lineups[round];
-
-                if (!lineup || Object.keys(lineup).length === 0) {
-                    return;
-                }
-
-                const field =
-                    document.createElement("div");
-
-                field.className = "lineup-mini-field";
-
-                field.innerHTML = lineupPositions
-                    .map(position => {
-
-                        const playerId = lineup[position];
-
-                        const player =
-                            match.players.find(
-                                p =>
-                                    String(p.playerId) ===
-                                    String(playerId)
-                            );
-
-                        const name = player
-                            ? player.name.split(" ")[0]
-                            : "—";
-
-                        return `
-                            <div
-                                class="mini-position ${positionClasses[position]}"
-                            >
-                                ${name}
-                            </div>
-                        `;
-                    })
-                    .join("");
-
-                savedLineups.appendChild(field);
-
-            });
-    }
 
     match.players.forEach(player => {
 
