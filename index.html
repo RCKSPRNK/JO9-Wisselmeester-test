@@ -1376,140 +1376,210 @@ function findIdealPlayCounts(present) {
     const n = present.length;
     const totalPlaySlots = 6 * 4;
 
-    /*
-        BASISVERDELING
+    // Basisverdeling
+    const minimumRounds = Math.floor(totalPlaySlots / n);
+    const extraRounds = totalPlaySlots % n;
 
-        Eerst krijgt iedereen hetzelfde minimale aantal
-        speelrondes.
-
-        8 spelers = 3 rondes per speler
-        7 spelers = 3 rondes + 3 voordeelrondes
-        6 spelers = 4 rondes per speler
-        9 spelers = 2 rondes + 6 voordeelrondes
-    */
-
-    const minimumRounds =
-        Math.floor(totalPlaySlots / n);
-
-    const extraRounds =
-        totalPlaySlots % n;
-
-    const counts =
-        Array(n).fill(minimumRounds);
-
+    const counts = Array(n).fill(minimumRounds);
 
     /*
-        VOORDEELCYCLUS
+        EERLIJKHEIDSSCORE
 
-        We kijken alleen naar eerdere wedstrijden
-        met EXACT hetzelfde aantal aanwezige spelers.
+        We kijken naar alle eerdere wedstrijden waarin
+        deze speler daadwerkelijk aanwezig was.
 
-        Dus bij 7 spelers:
-        - eerdere wedstrijd met 7 telt mee
-        - wedstrijd met 8 telt niet mee
-        - wedstrijd met 9 telt niet mee
-
-        Een speler die eerder voordeel kreeg,
-        komt daardoor niet automatisch opnieuw
-        als eerste aan de beurt.
+        Per wedstrijd bepalen we wat een speler gemiddeld
+        had mogen spelen op basis van het aantal aanwezige spelers.
     */
 
-    const ranking = present
-        .map((player, index) => {
+    const ranking = present.map((player, index) => {
 
-            const advantageHistory =
-                Array.isArray(player.advantageHistory)
-                    ? player.advantageHistory
-                    : [];
+        const playerMatches = Array.isArray(matches)
+            ? matches.filter(match =>
+                Array.isArray(match.presentPlayerIds) &&
+                match.presentPlayerIds.includes(player.id)
+            )
+            : [];
 
-            const relevantAdvantages =
-                advantageHistory.filter(
-                    item =>
-                        Number(item.playerCount) === n
-                );
-
-            const advantageCount =
-                relevantAdvantages.length;
-
-            const lastAdvantage =
-                advantageCount > 0
-                    ? Math.max(
-                        ...relevantAdvantages.map(
-                            item =>
-                                Number(item.matchNumber) || 0
-                        )
-                    )
-                    : 0;
-
+        // Nieuwe speler: geen bewezen achterstand.
+        if (playerMatches.length === 0) {
             return {
                 index,
-                advantageCount,
-                lastAdvantage,
-                history:
-                    Number(player.history) || 0
+                score: 0,
+                attendanceCount: 0,
+                recentAdvantages: 0
             };
-        })
-
+        }
 
         /*
-            VOLGORDE:
+            Bereken de historische balans.
 
-            1. Minst vaak voordeel gehad
-            2. Langst geleden voordeel gehad
-            3. Bij volledige gelijkstand:
-               laagste totale speeltijd
-            4. Als laatste de oorspronkelijke volgorde
+            Negatief = speler heeft minder gespeeld
+            dan het eerlijke aandeel.
+
+            Positief = speler heeft meer gespeeld
+            dan het eerlijke aandeel.
         */
 
-        .sort((a, b) => {
+        let totalRelativeBalance = 0;
 
-            if (
-                a.advantageCount !==
-                b.advantageCount
-            ) {
-                return (
-                    a.advantageCount -
-                    b.advantageCount
-                );
+        playerMatches.forEach(match => {
+
+            const playerResult =
+                Array.isArray(match.players)
+                    ? match.players.find(
+                        p => p.playerId === player.id
+                    )
+                    : null;
+
+            if (!playerResult) {
+                return;
             }
 
-            if (
-                a.lastAdvantage !==
-                b.lastAdvantage
-            ) {
-                return (
-                    a.lastAdvantage -
-                    b.lastAdvantage
-                );
+            const playerCount =
+                Number(match.playerCount) || 0;
+
+            if (playerCount < 6) {
+                return;
             }
 
-            if (
-                a.history !==
-                b.history
-            ) {
-                return (
-                    a.history -
-                    b.history
-                );
-            }
+            const expectedMinutes =
+                (totalPlaySlots / playerCount) * 10;
 
-            return a.index - b.index;
+            const actualMinutes =
+                Number(playerResult.minutes) || 0;
+
+            totalRelativeBalance +=
+                actualMinutes - expectedMinutes;
         });
 
+        const attendanceCount =
+            playerMatches.length;
+
+        const averageBalance =
+            totalRelativeBalance / attendanceCount;
+
+        /*
+            Betrouwbaarheid van de historie.
+
+            Hoe vaker iemand aanwezig is geweest,
+            hoe betrouwbaarder de historische achterstand.
+        */
+
+        let reliability;
+
+        if (attendanceCount === 1) {
+            reliability = 0.25;
+        }
+        else if (attendanceCount === 2) {
+            reliability = 0.40;
+        }
+        else if (attendanceCount === 3) {
+            reliability = 0.60;
+        }
+        else {
+            reliability = 1.00;
+        }
+
+        /*
+            Alleen een daadwerkelijke achterstand
+            geeft extra prioriteit.
+        */
+
+        const deficit =
+            Math.max(0, -averageBalance);
+
+        let score =
+            deficit * reliability;
+
+        /*
+            VOORDEELCORRECTIE
+
+            We kijken naar de laatste 5 wedstrijden
+            waarin deze speler aanwezig was.
+
+            Een recent voordeel verlaagt de prioriteit
+            een beetje, maar kan een duidelijke structurele
+            achterstand niet volledig wegdrukken.
+        */
+
+        const recentMatches =
+            playerMatches
+                .slice()
+                .sort(
+                    (a, b) =>
+                        Number(b.matchNumber || 0) -
+                        Number(a.matchNumber || 0)
+                )
+                .slice(0, 5);
+
+        const recentAdvantages =
+            recentMatches.filter(match =>
+                Array.isArray(match.advantagePlayerIds) &&
+                match.advantagePlayerIds.includes(player.id)
+            ).length;
+
+        score -=
+            recentAdvantages * 0.50;
+
+        return {
+            index,
+            score,
+            attendanceCount,
+            recentAdvantages
+        };
+    });
 
     /*
-        Geef de extra speelrondes aan de
-        eerlijkst gerangschikte spelers.
+        RANKING
+
+        Eerst hoogste eerlijkheidsscore.
+
+        Bij vrijwel gelijke scores:
+        1. minst recente voordelen
+        2. meer bewezen aanwezigheden
+        3. oorspronkelijke volgorde
     */
 
-    for (
-        let i = 0;
-        i < extraRounds;
-        i++
-    ) {
+    ranking.sort((a, b) => {
+
+        const scoreDifference =
+            b.score - a.score;
+
+        if (Math.abs(scoreDifference) > 0.01) {
+            return scoreDifference;
+        }
+
+        if (
+            a.recentAdvantages !==
+            b.recentAdvantages
+        ) {
+            return (
+                a.recentAdvantages -
+                b.recentAdvantages
+            );
+        }
+
+        if (
+            a.attendanceCount !==
+            b.attendanceCount
+        ) {
+            return (
+                b.attendanceCount -
+                a.attendanceCount
+            );
+        }
+
+        return a.index - b.index;
+    });
+
+    /*
+        Extra rondes toewijzen.
+    */
+
+    for (let i = 0; i < extraRounds; i++) {
         counts[ranking[i].index]++;
     }
-
 
     return counts;
 }
