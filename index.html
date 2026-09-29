@@ -668,6 +668,7 @@ button:hover {
         <th>Aanwezig</th>
         <th>Afwezig</th>
         <th>Speeltijd</th>
+        <th>Gem. min./aanwezig</th>
     </tr>
 </thead>
             <tbody id="minutesTable"></tbody>
@@ -2378,6 +2379,13 @@ function renderMinutes() {
                 <td>
                     <strong>${player.history} min</strong>
                 </td>
+                <td>
+                    <strong>${
+                        presentCount > 0
+                            ? (player.history / presentCount).toFixed(1)
+                            : "0.0"
+                        } min</strong>
+</td>
             `;
 
             tbody.appendChild(row);
