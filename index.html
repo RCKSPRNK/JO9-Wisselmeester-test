@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JO9 Wisselmeester</title>
+<title>Wisselmeester</title>
 
 <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
@@ -108,6 +108,13 @@ header h1 {
 header p {
     margin: 0;
     opacity: .8;
+}
+
+header p.header-team {
+    margin: 0 0 6px;
+    font-size: 16px;
+    font-weight: 600;
+    opacity: 1;
 }
 
 .card {
@@ -590,7 +597,8 @@ button:hover {
 <div class="container">
 
 <header>
-    <h1>⚽ JO9 Wisselmeester</h1>
+    <h1>⚽ <span id="brandAppName">Wisselmeester</span></h1>
+    <p class="header-team" id="brandClubTeam"></p>
     <p>Automatisch en eerlijk wisselschema</p>
 </header>
 
@@ -869,7 +877,7 @@ button:hover {
 
 /*
 ===========================================================
-JO9 WISSELMEESTER
+WISSELMEESTER
 ===========================================================
 
 BELANGRIJKSTE REGEL:
@@ -893,6 +901,35 @@ Daarna bepaalt hij in welke ronde iedereen op de bank zit.
 
 ===========================================================
 */
+
+
+/*
+CENTRALE BRANDING
+
+appName is de vaste merknaam van de app.
+clubName en teamName zijn configureerbaar.
+Dit zijn alleen weergavenamen: de opslagsleutels
+(jo9_...) en de Firebase-paden blijven ongewijzigd.
+*/
+
+const APP_CONFIG = {
+    appName: "Wisselmeester",
+    clubName: "BVV Barendrecht",
+    teamName: "JO9-9"
+};
+
+function applyBranding() {
+
+    document.title = APP_CONFIG.appName;
+
+    document.getElementById("brandAppName").textContent =
+        APP_CONFIG.appName;
+
+    document.getElementById("brandClubTeam").textContent =
+        APP_CONFIG.clubName + " · " + APP_CONFIG.teamName;
+}
+
+applyBranding();
 
 
 const DEFAULT_PLAYERS = [
@@ -2053,8 +2090,8 @@ const advantageText = advantagePlayers.length
 document.getElementById(
     "summary"
 ).innerHTML = `
-    <strong>⚽ ${matchHomeAway === "thuis" ? "BVV Barendrecht" : opponent} 
-    ${matchHomeAway === "thuis" ? "– " + opponent : "– BBV Barendrecht"}</strong>
+    <strong>⚽ ${matchHomeAway === "thuis" ? APP_CONFIG.clubName : opponent} 
+    ${matchHomeAway === "thuis" ? "– " + opponent : "– " + APP_CONFIG.clubName}</strong>
     <br>
     📅 ${matchDate} · 🕐 ${matchTime}
     <br>

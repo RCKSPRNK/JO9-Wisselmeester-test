@@ -1,2 +1,2 @@
-# JO9-Wisselmeester
-JO9 Wisselmeester - eerlijk wisselschema voor jeugdvoetbal
+# Wisselmeester
+Wisselmeester - eerlijk wisselschema voor jeugdvoetbal
