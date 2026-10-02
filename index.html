@@ -519,12 +519,39 @@ button:hover {
     background: #f5f7f9;
 }
 
+.minutes-table .avg-mobile {
+    display: none;
+}
+
 .small {
     color: #6c7780;
     font-size: 13px;
 }
 
 @media (max-width: 600px) {
+
+    .minutes-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+
+    .minutes-table th,
+    .minutes-table td {
+        padding: 8px 4px;
+        font-size: 13px;
+        overflow-wrap: anywhere;
+    }
+
+    .minutes-table .col-avg {
+        display: none;
+    }
+
+    .minutes-table .avg-mobile {
+        display: block;
+        font-size: 11px;
+        color: #6c7780;
+        margin-top: 2px;
+    }
 
     .round-body {
         grid-template-columns: 1fr;
@@ -668,7 +695,7 @@ button:hover {
         <th>Aanwezig</th>
         <th>Afwezig</th>
         <th>Speeltijd</th>
-        <th>Gem. min./aanwezig</th>
+        <th class="col-avg">Gem. min./aanwezig</th>
     </tr>
 </thead>
             <tbody id="minutesTable"></tbody>
@@ -2369,6 +2396,11 @@ function renderMinutes() {
                     !match.presentPlayerIds.includes(player.id)
                 ).length;
 
+            const averageMinutes =
+                presentCount > 0
+                    ? (player.history / presentCount).toFixed(1)
+                    : "0.0";
+
             const row =
                 document.createElement("tr");
 
@@ -2378,13 +2410,10 @@ function renderMinutes() {
                 <td>${absentCount}×</td>
                 <td>
                     <strong>${player.history} min</strong>
+                    <span class="avg-mobile">gem. ${averageMinutes} min/aanw.</span>
                 </td>
-                <td>
-                    <strong>${
-                        presentCount > 0
-                            ? (player.history / presentCount).toFixed(1)
-                            : "0.0"
-                        } min</strong>
+                <td class="col-avg">
+                    <strong>${averageMinutes} min</strong>
 </td>
             `;
 
