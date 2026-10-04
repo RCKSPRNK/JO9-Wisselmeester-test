@@ -1149,6 +1149,75 @@ const DEFAULT_PLAYERS = [
     { id: 8, name: "Levi de Bruijn", history: 0 }
 ];
 const STORAGE_VERSION = 3;
+
+// BEGIN CONTEXT HELPERS
+/*
+=========================================================
+CONTEXT- EN PADLAAN (Fase 2A)
+
+De app draait voorlopig altijd in de LEGACY-context:
+  Firebase:     team/players, team/matches
+  localStorage: jo9_players, jo9_matches, ...
+
+Voor een latere teamcontext (nog NIET in gebruik):
+  Firebase:     teams/{teamId}/players, teams/{teamId}/matches
+  localStorage: jo9_team_{teamId}_players, ...
+
+Een ongeldig teamId valt NOOIT stilzwijgend terug op legacy:
+er wordt een fout gegooid.
+=========================================================
+*/
+
+const LEGACY_CONTEXT = { mode: "legacy", teamId: null };
+
+let activeContext = LEGACY_CONTEXT;
+
+function isValidTeamId(id) {
+    return typeof id === "string" &&
+        /^[A-Za-z0-9_-]{1,64}$/.test(id);
+}
+
+function checkContext(context) {
+
+    if (!context ||
+        (context.mode !== "legacy" && context.mode !== "team")) {
+        throw new Error("Ongeldige context.");
+    }
+
+    if (context.mode === "team" && !isValidTeamId(context.teamId)) {
+        throw new Error("Ongeldig teamId: " + String(context.teamId));
+    }
+}
+
+function dataPath(kind, context = activeContext) {
+
+    if (kind !== "players" && kind !== "matches") {
+        throw new Error("Onbekend datatype: " + String(kind));
+    }
+
+    checkContext(context);
+
+    return context.mode === "legacy"
+        ? "team/" + kind
+        : "teams/" + context.teamId + "/" + kind;
+}
+
+function storageKey(kind, context = activeContext) {
+
+    if (kind !== "players" &&
+        kind !== "matches" &&
+        kind !== "match_counter" &&
+        kind !== "storage_version") {
+        throw new Error("Onbekende opslagsleutel: " + String(kind));
+    }
+
+    checkContext(context);
+
+    return context.mode === "legacy"
+        ? "jo9_" + kind
+        : "jo9_team_" + context.teamId + "_" + kind;
+}
+// END CONTEXT HELPERS
     
 let players = loadPlayers();
 let matches = loadMatches();
@@ -1411,7 +1480,7 @@ function renderLineupPreview(roundIndex) {
 function loadPlayers() {
 
     const saved =
-        localStorage.getItem("jo9_players");
+        localStorage.getItem(storageKey("players"));
 
 
     /*
@@ -1468,13 +1537,13 @@ function loadPlayers() {
 
 
     localStorage.setItem(
-        "jo9_players",
+        storageKey("players"),
         JSON.stringify(freshPlayers)
     );
 
 
     localStorage.setItem(
-        "jo9_storage_version",
+        storageKey("storage_version"),
         String(STORAGE_VERSION)
     );
 
@@ -1485,12 +1554,12 @@ function loadPlayers() {
 function savePlayers() {
 
     localStorage.setItem(
-        "jo9_players",
+        storageKey("players"),
         JSON.stringify(players)
     );
 
     localStorage.setItem(
-        "jo9_storage_version",
+        storageKey("storage_version"),
         String(STORAGE_VERSION)
     );
 
@@ -1509,7 +1578,7 @@ function savePlayers() {
 function loadMatches() {
 
     const saved =
-        localStorage.getItem("jo9_matches");
+        localStorage.getItem(storageKey("matches"));
 
 
     if (!saved) {
@@ -1543,7 +1612,7 @@ function loadMatches() {
 function saveMatches() {
 
     localStorage.setItem(
-        "jo9_matches",
+        storageKey("matches"),
         JSON.stringify(matches)
     );
 }
@@ -2439,13 +2508,13 @@ function finishMatch() {
 
     let matchNumber =
         Number(
-            localStorage.getItem("jo9_match_counter") || 0
+            localStorage.getItem(storageKey("match_counter")) || 0
         );
 
     matchNumber++;
 
     localStorage.setItem(
-        "jo9_match_counter",
+        storageKey("match_counter"),
         String(matchNumber)
     );
 
@@ -2561,7 +2630,7 @@ matches.push({
     }
 
     localStorage.setItem(
-        "jo9_matches",
+        storageKey("matches"),
         JSON.stringify(matches)
     );
 
@@ -3170,7 +3239,7 @@ const newMatches =
     matches = newMatches;
 
     localStorage.setItem(
-        "jo9_matches",
+        storageKey("matches"),
         JSON.stringify(matches)
     );
 
@@ -3512,11 +3581,11 @@ async function resetSeason() {
     matches = [];
 
     localStorage.removeItem(
-        "jo9_matches"
+        storageKey("matches")
     );
 
     localStorage.removeItem(
-        "jo9_match_counter"
+        storageKey("match_counter")
     );
 
 
@@ -3665,7 +3734,7 @@ databaseURL: "https://jo9-wisselmeester-test-default-rtdb.europe-west1.firebased
         try {
 
             await set(
-                ref(db, "team/players"),
+                ref(db, dataPath("players")),
                 playerList
             );
 
@@ -3694,7 +3763,7 @@ async function saveMatchesToFirebase(matchList) {
     try {
 
         await set(
-            ref(db, "team/matches"),
+            ref(db, dataPath("matches")),
             matchList
         );
 
@@ -3727,7 +3796,7 @@ async function saveMatchesToFirebase(matchList) {
         try {
 
             const matchesRef =
-                ref(db, "team/matches");
+                ref(db, dataPath("matches"));
 
 
             const snapshot =
@@ -3777,7 +3846,7 @@ async function saveMatchesToFirebase(matchList) {
    function watchMatchesFromFirebase(onCancel) {
 
     const matchesRef =
-        ref(db, "team/matches");
+        ref(db, dataPath("matches"));
 
 
     return onValue(
@@ -3797,7 +3866,7 @@ async function saveMatchesToFirebase(matchList) {
 
 
             localStorage.setItem(
-                "jo9_matches",
+                storageKey("matches"),
                 JSON.stringify(matches)
             );
 
@@ -3822,7 +3891,7 @@ async function saveMatchesToFirebase(matchList) {
 function watchPlayersFromFirebase(onCancel) {
 
     const playersRef =
-        ref(db, "team/players");
+        ref(db, dataPath("players"));
 
     return onValue(
         playersRef,
@@ -3846,7 +3915,7 @@ function watchPlayersFromFirebase(onCancel) {
                 }));
 
             localStorage.setItem(
-                "jo9_players",
+                storageKey("players"),
                 JSON.stringify(players)
             );
 
@@ -3914,7 +3983,7 @@ function watchPlayersFromFirebase(onCancel) {
             // -------------------------------------------------
 
             const playersRef =
-                ref(db, "team/players");
+                ref(db, dataPath("players"));
 
 
             const playersSnapshot =

@@ -1,0 +1,95 @@
+{
+  "rules": {
+
+    "team": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous'",
+
+        "email": {
+          ".write": "auth != null && auth.uid === $uid && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous'",
+          ".validate": "newData.isString() && newData.val() === auth.token.email"
+        },
+
+        "displayName": {
+          ".write": "auth != null && auth.uid === $uid && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous'",
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+
+        "createdAt": {
+          ".write": "auth != null && auth.uid === $uid && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous' && !data.exists()",
+          ".validate": "newData.isNumber()"
+        },
+
+        "teams": {
+          "$teamId": {
+            ".write": "auth != null && auth.uid === $uid && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous' && (!newData.exists() || (newData.val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).exists() || newData.parent().parent().parent().parent().child('teams').child($teamId).child('members').child(auth.uid).val() === 'owner')))",
+            ".validate": "newData.val() === true"
+          }
+        },
+
+        "$other": { ".validate": false }
+      }
+    },
+
+    "teams": {
+      "$teamId": {
+
+        ".read": "auth != null && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous' && root.child('teams').child($teamId).child('members').child(auth.uid).exists()",
+
+        ".write": "auth != null && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous' && ((!data.exists() && newData.child('createdBy').val() === auth.uid && newData.child('members').child(auth.uid).val() === 'owner') || (data.exists() && !newData.exists() && data.child('members').child(auth.uid).val() === 'owner'))",
+
+        ".validate": "newData.hasChildren(['clubName', 'teamName', 'season', 'createdAt', 'createdBy', 'members'])",
+
+        "clubName": {
+          ".write": "auth != null && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous' && root.child('teams').child($teamId).child('members').child(auth.uid).val() === 'owner'",
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
+        },
+
+        "teamName": {
+          ".write": "auth != null && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous' && root.child('teams').child($teamId).child('members').child(auth.uid).val() === 'owner'",
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
+        },
+
+        "season": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 20"
+        },
+
+        "createdAt": {
+          ".validate": "newData.isNumber()"
+        },
+
+        "createdBy": {
+          ".validate": "newData.isString()"
+        },
+
+        "members": {
+          "$memberUid": {
+            ".write": "auth != null && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous' && data.val() === 'trainer' && !newData.exists() && ($memberUid === auth.uid || (root.child('teams').child($teamId).child('members').child(auth.uid).val() === 'owner' && $memberUid !== auth.uid))",
+            ".validate": "newData.val() === 'owner' && $memberUid === newData.parent().parent().child('createdBy').val()"
+          }
+        },
+
+        "players": {
+          ".write": "auth != null && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous' && root.child('teams').child($teamId).child('members').child(auth.uid).exists()"
+        },
+
+        "matches": {
+          ".write": "auth != null && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous' && root.child('teams').child($teamId).child('members').child(auth.uid).exists()"
+        },
+
+        "$other": { ".validate": false }
+      }
+    },
+
+    "inviteCodes": {
+      ".read": false,
+      ".write": false
+    }
+
+  }
+}
