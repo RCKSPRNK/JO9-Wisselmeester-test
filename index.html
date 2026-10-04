@@ -535,6 +535,98 @@ button:hover {
     font-size: 13px;
 }
 
+/* Account / inloggen */
+
+.auth-toggle {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    background: #e8edf1;
+    color: #17212b;
+    text-align: left;
+}
+
+.auth-body {
+    margin-top: 16px;
+}
+
+.auth-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.auth-tabs button.active {
+    background: #17212b;
+    color: white;
+}
+
+.auth-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-weight: bold;
+    margin-bottom: 12px;
+}
+
+.auth-form input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #dfe5ea;
+    border-radius: 10px;
+    font-size: 16px;
+    background: white;
+    box-sizing: border-box;
+}
+
+.auth-link {
+    background: none;
+    color: #17212b;
+    text-decoration: underline;
+    padding: 10px 0 0;
+    font-weight: normal;
+    font-size: 14px;
+}
+
+.auth-message {
+    padding: 14px;
+    border-radius: 12px;
+    margin-bottom: 14px;
+    overflow-wrap: anywhere;
+}
+
+.auth-message.ok {
+    background: #e3f4e6;
+    color: #1c5b2a;
+}
+
+.auth-message.error {
+    background: #ffe5e5;
+    color: #9b1c1c;
+}
+
+.auth-message.info {
+    background: #fff4d6;
+    color: #7a5a00;
+}
+
+.auth-actions {
+    display: grid;
+    gap: 8px;
+}
+
+.auth-actions button {
+    width: 100%;
+}
+
+.auth-email {
+    overflow-wrap: anywhere;
+    font-weight: bold;
+}
+
 @media (max-width: 600px) {
 
     .minutes-table {
@@ -601,6 +693,120 @@ button:hover {
     <p class="header-team" id="brandClubTeam"></p>
     <p>Automatisch en eerlijk wisselschema</p>
 </header>
+
+<div class="card" id="authCard">
+
+    <button type="button" class="auth-toggle" id="authToggle">
+        <span id="authToggleLabel">👤 Account</span>
+        <span id="authArrow">▶</span>
+    </button>
+
+    <div class="auth-body" id="authBody" style="display:none;">
+
+        <div id="authMessage" class="auth-message" style="display:none;"></div>
+
+        <!-- Niet ingelogd (of anoniem) -->
+        <div id="authLoggedOut">
+
+            <h2>Welkom bij Wisselmeester</h2>
+
+            <p class="small">
+                Maak een account aan of log in. Zonder account blijft
+                de app werken zoals nu.
+            </p>
+
+            <div class="auth-tabs">
+                <button type="button" class="secondary active" id="authTabLogin">Inloggen</button>
+                <button type="button" class="secondary" id="authTabRegister">Account aanmaken</button>
+            </div>
+
+            <form class="auth-form" id="loginForm" novalidate>
+                <label>
+                    E-mailadres
+                    <input type="email" id="loginEmail" autocomplete="email" inputmode="email">
+                </label>
+                <label>
+                    Wachtwoord
+                    <input type="password" id="loginPassword" autocomplete="current-password">
+                </label>
+                <button type="submit" class="primary" id="loginSubmit">Inloggen</button>
+                <button type="button" class="auth-link" id="showResetForm">Wachtwoord vergeten?</button>
+            </form>
+
+            <form class="auth-form" id="registerForm" style="display:none;" novalidate>
+                <label>
+                    E-mailadres
+                    <input type="email" id="registerEmail" autocomplete="email" inputmode="email">
+                </label>
+                <label>
+                    Wachtwoord (minimaal 6 tekens)
+                    <input type="password" id="registerPassword" autocomplete="new-password">
+                </label>
+                <label>
+                    Wachtwoord opnieuw
+                    <input type="password" id="registerPassword2" autocomplete="new-password">
+                </label>
+                <button type="submit" class="primary" id="registerSubmit">Account aanmaken</button>
+            </form>
+
+            <form class="auth-form" id="resetForm" style="display:none;" novalidate>
+                <h3>Wachtwoord vergeten?</h3>
+                <p class="small">
+                    Vul je e-mailadres in. Je krijgt een e-mail waarmee je
+                    een nieuw wachtwoord kunt kiezen.
+                </p>
+                <label>
+                    E-mailadres
+                    <input type="email" id="resetEmail" autocomplete="email" inputmode="email">
+                </label>
+                <button type="submit" class="primary" id="resetSubmit">Resetmail versturen</button>
+                <button type="button" class="auth-link" id="hideResetForm">Terug naar inloggen</button>
+            </form>
+
+        </div>
+
+        <!-- Ingelogd, e-mail nog niet bevestigd -->
+        <div id="authUnverified" style="display:none;">
+
+            <h2>Bevestig je e-mailadres</h2>
+
+            <p>
+                Je bent aangemeld als
+                <span class="auth-email" id="authUnverifiedEmail"></span>,
+                maar dit e-mailadres is nog niet bevestigd. Open de
+                verificatiemail en klik op de link. Controleer ook je
+                spam.
+            </p>
+
+            <div class="auth-actions">
+                <button type="button" class="primary" id="authCheckVerified">Ik heb mijn e-mail bevestigd</button>
+                <button type="button" class="secondary" id="authResendVerification">Verificatiemail opnieuw versturen</button>
+                <button type="button" class="secondary" id="authLogoutUnverified">Uitloggen</button>
+            </div>
+
+        </div>
+
+        <!-- Ingelogd en bevestigd -->
+        <div id="authVerified" style="display:none;">
+
+            <h2>Ingelogd</h2>
+
+            <p>
+                Aangemeld als
+                <span class="auth-email" id="authVerifiedEmail"></span>
+            </p>
+
+            <p class="small">Je hebt nog geen teams.</p>
+
+            <div class="auth-actions">
+                <button type="button" class="secondary" id="authLogoutVerified">Uitloggen</button>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
 
 <div class="card">
 
@@ -3370,7 +3576,13 @@ renderPlayers();
 
     import {
         getAuth,
-        signInAnonymously
+        signInAnonymously,
+        onAuthStateChanged,
+        createUserWithEmailAndPassword,
+        signInWithEmailAndPassword,
+        signOut,
+        sendEmailVerification,
+        sendPasswordResetEmail
     } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
 
 
@@ -3562,13 +3774,13 @@ async function saveMatchesToFirebase(matchList) {
     // WEDSTRIJDEN REALTIME VOLGEN
     // =========================================================
 
-   function watchMatchesFromFirebase() {
+   function watchMatchesFromFirebase(onCancel) {
 
     const matchesRef =
         ref(db, "team/matches");
 
 
-    onValue(
+    return onValue(
         matchesRef,
         snapshot => {
 
@@ -3597,7 +3809,8 @@ async function saveMatchesToFirebase(matchList) {
                 "🔄 Wedstrijden realtime bijgewerkt."
             );
 
-        }
+        },
+        onCancel
     );
 
 }
@@ -3606,12 +3819,12 @@ async function saveMatchesToFirebase(matchList) {
 // SPELERS REALTIME VOLGEN
 // =========================================================
 
-function watchPlayersFromFirebase() {
+function watchPlayersFromFirebase(onCancel) {
 
     const playersRef =
         ref(db, "team/players");
 
-    onValue(
+    return onValue(
         playersRef,
         snapshot => {
 
@@ -3645,7 +3858,8 @@ function watchPlayersFromFirebase() {
                 "🔄 Spelers realtime bijgewerkt."
             );
 
-        }
+        },
+        onCancel
     );
 
 }
@@ -3681,15 +3895,17 @@ function watchPlayersFromFirebase() {
 
 
     // =========================================================
-    // ANONIEME GEBRUIKER AANMELDEN
+    // BESTAANDE SYNCHRONISATIE (ongewijzigd, nu in een functie)
+    //
+    // Wordt gestart door ensureSync() zodra er een Firebase-
+    // gebruiker is (anoniem of met e-mailaccount).
     // =========================================================
 
-    signInAnonymously(auth)
-
-        .then(async () => {
+    async function runInitialSync(gen) {
 
             console.log(
-                "✅ Firebase anonieme gebruiker aangemeld."
+                "✅ Firebase-sessie actief, synchronisatie gestart (#" +
+                gen + ")."
             );
 
 
@@ -3749,20 +3965,590 @@ function watchPlayersFromFirebase() {
             // REALTIME WEDSTRIJDEN AANZETTEN
             // -------------------------------------------------
 
-            watchMatchesFromFirebase();
-            watchPlayersFromFirebase();
+            unsubscribers = [
+                watchMatchesFromFirebase(
+                    error => onListenerCancelled(gen, error)
+                ),
+                watchPlayersFromFirebase(
+                    error => onListenerCancelled(gen, error)
+                )
+            ];
+
+    }
 
 
-        })
+    // =========================================================
+    // SYNCHRONISATIE EENMALIG STARTEN
+    //
+    // - nooit twee keer tegelijk;
+    // - een wisseling van gebruiker (anoniem -> account) start
+    //   NIET opnieuw: de listeners blijven gewoon actief;
+    // - alleen als de server de listeners beeindigt (bijv. na
+    //   uitloggen) worden ze netjes opgeruimd en eenmalig
+    //   opnieuw gestart, met een limiet tegen herstartlussen.
+    // =========================================================
 
-        .catch(error => {
+    let syncState = "idle";
+    let syncGeneration = 0;
+    let unsubscribers = [];
+    let restartTimes = [];
+
+    async function ensureSync() {
+
+        if (!auth.currentUser || syncState !== "idle") {
+            return;
+        }
+
+        syncState = "starting";
+
+        const gen = ++syncGeneration;
+
+        try {
+
+            await runInitialSync(gen);
+
+            syncState = "running";
+
+        } catch (error) {
 
             console.error(
                 "❌ Firebase synchronisatie mislukt:",
                 error
             );
 
+            syncState = "idle";
+
+        }
+
+    }
+
+    function onListenerCancelled(gen, error) {
+
+        if (gen !== syncGeneration || syncState !== "running") {
+            return;
+        }
+
+        console.warn(
+            "⚠️ Firebase-listener beëindigd, synchronisatie wordt hersteld.",
+            error
+        );
+
+        unsubscribers.forEach(unsubscribe => {
+            try { unsubscribe(); } catch (e) { }
         });
+
+        unsubscribers = [];
+        syncState = "idle";
+        syncGeneration++;
+
+        const now = Date.now();
+
+        restartTimes =
+            restartTimes.filter(t => now - t < 60000);
+
+        if (restartTimes.length >= 3) {
+
+            console.warn(
+                "⚠️ Te vaak herstart; synchronisatie wacht op de volgende aanmelding."
+            );
+
+            return;
+        }
+
+        restartTimes.push(now);
+
+        ensureSync();
+
+    }
+
+    window.jo9Firebase.getSyncStatus = () => ({
+        state: syncState,
+        generation: syncGeneration,
+        listeners: unsubscribers.length
+    });
+
+
+    // =========================================================
+    // ACCOUNT: SCHERMEN EN MELDINGEN
+    // =========================================================
+
+    auth.languageCode = "nl";
+
+    const authEl = id => document.getElementById(id);
+
+    let lastAuthKind = null;
+
+    function showAuthMessage(type, text) {
+
+        const box = authEl("authMessage");
+
+        box.className = "auth-message " + type;
+        box.textContent = text;
+        box.style.display = "block";
+
+    }
+
+    function clearAuthMessage() {
+
+        authEl("authMessage").style.display = "none";
+
+    }
+
+    function setAuthOpen(open) {
+
+        authEl("authBody").style.display =
+            open ? "block" : "none";
+
+        authEl("authArrow").textContent =
+            open ? "▼" : "▶";
+
+    }
+
+    function authErrorText(error) {
+
+        switch (error && error.code) {
+
+            case "auth/email-already-in-use":
+                return "Er bestaat al een account met dit e-mailadres. Log in of gebruik 'Wachtwoord vergeten?'.";
+
+            case "auth/invalid-email":
+                return "Dit e-mailadres is ongeldig.";
+
+            case "auth/weak-password":
+                return "Dit wachtwoord is te zwak. Kies minimaal 6 tekens.";
+
+            case "auth/missing-password":
+                return "Vul je wachtwoord in.";
+
+            case "auth/invalid-credential":
+            case "auth/wrong-password":
+            case "auth/user-not-found":
+            case "auth/invalid-login-credentials":
+                return "E-mailadres of wachtwoord is onjuist.";
+
+            case "auth/user-disabled":
+                return "Dit account is uitgeschakeld.";
+
+            case "auth/too-many-requests":
+                return "Te veel pogingen. Wacht even en probeer het later opnieuw.";
+
+            case "auth/network-request-failed":
+                return "Geen verbinding met Firebase. Controleer je internet en probeer opnieuw.";
+
+            case "auth/operation-not-allowed":
+                return "Inloggen met e-mail en wachtwoord is niet ingeschakeld.";
+
+            default:
+                return "Er ging iets mis" +
+                    (error && error.code ? " (" + error.code + ")" : "") +
+                    ". Probeer het opnieuw.";
+
+        }
+
+    }
+
+    function renderAuthUI(user) {
+
+        const isAccount = !!user && !user.isAnonymous;
+
+        const verified = isAccount && user.emailVerified;
+
+        const kind =
+            !isAccount ? "out" : (verified ? "verified" : "unverified");
+
+        authEl("authLoggedOut").style.display =
+            kind === "out" ? "block" : "none";
+
+        authEl("authUnverified").style.display =
+            kind === "unverified" ? "block" : "none";
+
+        authEl("authVerified").style.display =
+            kind === "verified" ? "block" : "none";
+
+        authEl("authUnverifiedEmail").textContent =
+            isAccount ? user.email : "";
+
+        authEl("authVerifiedEmail").textContent =
+            isAccount ? user.email : "";
+
+        authEl("authToggleLabel").textContent =
+            kind === "out"
+                ? "👤 Account · niet ingelogd"
+                : kind === "unverified"
+                    ? "👤 E-mailadres nog niet bevestigd"
+                    : "👤 " + user.email;
+
+        // Bij een nieuwe status waarin actie nodig is,
+        // het account-blok openen.
+        if (kind !== lastAuthKind) {
+
+            if (kind === "unverified") {
+                setAuthOpen(true);
+            }
+
+            lastAuthKind = kind;
+        }
+
+    }
+
+    function setAuthTab(tab) {
+
+        authEl("loginForm").style.display =
+            tab === "login" ? "block" : "none";
+
+        authEl("registerForm").style.display =
+            tab === "register" ? "block" : "none";
+
+        authEl("resetForm").style.display =
+            tab === "reset" ? "block" : "none";
+
+        authEl("authTabLogin").classList.toggle(
+            "active", tab === "login"
+        );
+
+        authEl("authTabRegister").classList.toggle(
+            "active", tab === "register"
+        );
+
+        clearAuthMessage();
+
+    }
+
+    async function withBusy(button, action) {
+
+        button.disabled = true;
+
+        try {
+            await action();
+        } finally {
+            button.disabled = false;
+        }
+
+    }
+
+    authEl("authToggle").addEventListener("click", () => {
+        setAuthOpen(authEl("authBody").style.display === "none");
+    });
+
+    authEl("authTabLogin").addEventListener(
+        "click", () => setAuthTab("login")
+    );
+
+    authEl("authTabRegister").addEventListener(
+        "click", () => setAuthTab("register")
+    );
+
+    authEl("showResetForm").addEventListener("click", () => {
+        authEl("resetEmail").value = authEl("loginEmail").value;
+        setAuthTab("reset");
+    });
+
+    authEl("hideResetForm").addEventListener(
+        "click", () => setAuthTab("login")
+    );
+
+
+    // ---- Account aanmaken ----
+
+    authEl("registerForm").addEventListener("submit", async event => {
+
+        event.preventDefault();
+
+        const email = authEl("registerEmail").value.trim();
+        const password = authEl("registerPassword").value;
+        const password2 = authEl("registerPassword2").value;
+
+        if (!email || !password) {
+            showAuthMessage("error", "Vul je e-mailadres en wachtwoord in.");
+            return;
+        }
+
+        if (password.length < 6) {
+            showAuthMessage("error", "Kies een wachtwoord van minimaal 6 tekens.");
+            return;
+        }
+
+        if (password !== password2) {
+            showAuthMessage("error", "De twee wachtwoorden zijn niet gelijk.");
+            return;
+        }
+
+        await withBusy(authEl("registerSubmit"), async () => {
+
+            let credential;
+
+            try {
+
+                credential =
+                    await createUserWithEmailAndPassword(
+                        auth, email, password
+                    );
+
+            } catch (error) {
+
+                showAuthMessage("error", authErrorText(error));
+                return;
+
+            }
+
+            authEl("registerPassword").value = "";
+            authEl("registerPassword2").value = "";
+
+            try {
+
+                await sendEmailVerification(credential.user);
+
+                showAuthMessage(
+                    "ok",
+                    "Account aangemaakt. We hebben een verificatiemail gestuurd naar " +
+                    email + ". Bevestig eerst je e-mailadres en kies daarna " +
+                    "'Ik heb mijn e-mail bevestigd'."
+                );
+
+            } catch (error) {
+
+                showAuthMessage(
+                    "error",
+                    "Account aangemaakt, maar de verificatiemail kon niet worden verstuurd. " +
+                    authErrorText(error) +
+                    " Gebruik 'Verificatiemail opnieuw versturen'."
+                );
+
+            }
+
+        });
+
+    });
+
+
+    // ---- Inloggen ----
+
+    authEl("loginForm").addEventListener("submit", async event => {
+
+        event.preventDefault();
+
+        const email = authEl("loginEmail").value.trim();
+        const password = authEl("loginPassword").value;
+
+        if (!email || !password) {
+            showAuthMessage("error", "Vul je e-mailadres en wachtwoord in.");
+            return;
+        }
+
+        await withBusy(authEl("loginSubmit"), async () => {
+
+            try {
+
+                const credential =
+                    await signInWithEmailAndPassword(
+                        auth, email, password
+                    );
+
+                authEl("loginPassword").value = "";
+
+                if (credential.user.emailVerified) {
+                    showAuthMessage("ok", "Je bent ingelogd.");
+                } else {
+                    showAuthMessage(
+                        "info",
+                        "Je e-mailadres is nog niet bevestigd."
+                    );
+                }
+
+            } catch (error) {
+
+                showAuthMessage("error", authErrorText(error));
+
+            }
+
+        });
+
+    });
+
+
+    // ---- Wachtwoord vergeten ----
+
+    authEl("resetForm").addEventListener("submit", async event => {
+
+        event.preventDefault();
+
+        const email = authEl("resetEmail").value.trim();
+
+        if (!email) {
+            showAuthMessage("error", "Vul je e-mailadres in.");
+            return;
+        }
+
+        const neutral =
+            "Als er een account bestaat voor " + email +
+            ", is er een e-mail gestuurd om je wachtwoord te herstellen.";
+
+        await withBusy(authEl("resetSubmit"), async () => {
+
+            try {
+
+                await sendPasswordResetEmail(auth, email);
+
+                showAuthMessage("ok", neutral);
+
+            } catch (error) {
+
+                if (error && error.code === "auth/user-not-found") {
+
+                    // Niet verklappen of het adres bestaat.
+                    showAuthMessage("ok", neutral);
+
+                } else {
+
+                    showAuthMessage("error", authErrorText(error));
+
+                }
+
+            }
+
+        });
+
+    });
+
+
+    // ---- E-mailverificatie ----
+
+    authEl("authResendVerification").addEventListener("click", async () => {
+
+        const user = auth.currentUser;
+
+        if (!user || user.isAnonymous) {
+            return;
+        }
+
+        await withBusy(authEl("authResendVerification"), async () => {
+
+            try {
+
+                await sendEmailVerification(user);
+
+                showAuthMessage(
+                    "ok",
+                    "Verificatiemail opnieuw verstuurd naar " + user.email + "."
+                );
+
+            } catch (error) {
+
+                showAuthMessage("error", authErrorText(error));
+
+            }
+
+        });
+
+    });
+
+    authEl("authCheckVerified").addEventListener("click", async () => {
+
+        const user = auth.currentUser;
+
+        if (!user || user.isAnonymous) {
+            return;
+        }
+
+        await withBusy(authEl("authCheckVerified"), async () => {
+
+            try {
+
+                await user.reload();
+                await user.getIdToken(true);
+
+                renderAuthUI(auth.currentUser);
+
+                if (auth.currentUser.emailVerified) {
+
+                    showAuthMessage(
+                        "ok",
+                        "Je e-mailadres is bevestigd."
+                    );
+
+                } else {
+
+                    showAuthMessage(
+                        "info",
+                        "Je e-mailadres is nog niet bevestigd. Klik op de link in de verificatiemail en probeer het daarna opnieuw."
+                    );
+
+                }
+
+            } catch (error) {
+
+                showAuthMessage("error", authErrorText(error));
+
+            }
+
+        });
+
+    });
+
+
+    // ---- Uitloggen ----
+
+    async function logout() {
+
+        try {
+
+            await signOut(auth);
+
+            showAuthMessage("ok", "Je bent uitgelogd.");
+
+        } catch (error) {
+
+            showAuthMessage("error", authErrorText(error));
+
+        }
+
+    }
+
+    authEl("authLogoutUnverified").addEventListener("click", logout);
+    authEl("authLogoutVerified").addEventListener("click", logout);
+
+
+    // =========================================================
+    // AUTH-STATUS (centraal)
+    //
+    // - Er is een gebruiker (anoniem of account): schermen
+    //   bijwerken en de bestaande synchronisatie starten (eenmalig).
+    // - Er is geen gebruiker: anonieme terugval, zodat de huidige
+    //   app blijft werken zoals voorheen. Een bestaande sessie
+    //   wordt nooit vervangen: onAuthStateChanged geeft die eerst.
+    // =========================================================
+
+    let anonymousPending = false;
+
+    onAuthStateChanged(auth, user => {
+
+        renderAuthUI(user);
+
+        if (!user) {
+
+            if (!anonymousPending) {
+
+                anonymousPending = true;
+
+                signInAnonymously(auth)
+                    .catch(error => {
+                        console.error(
+                            "❌ Anoniem aanmelden mislukt:",
+                            error
+                        );
+                    })
+                    .finally(() => {
+                        anonymousPending = false;
+                    });
+
+            }
+
+            return;
+        }
+
+        ensureSync();
+
+    });
 
 </script>
 <div id="lineupModal" class="lineup-modal" style="display:none;">
