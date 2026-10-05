@@ -11,13 +11,17 @@ const { describe, it, before } = require('node:test');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 let ctx;
+const alerts = [];
 const run = code => vm.runInContext(code, ctx);
 
 before(() => {
   const m = html.match(/\/\/ BEGIN CONTEXT HELPERS([\s\S]*?)\/\/ END CONTEXT HELPERS/);
   assert.ok(m, 'helperblok niet gevonden in index.html');
-  ctx = vm.createContext({});
+  const s = html.match(/\/\/ BEGIN CONTEXT STATE([\s\S]*?)\/\/ END CONTEXT STATE/);
+  assert.ok(s, 'state-blok niet gevonden in index.html');
+  ctx = vm.createContext({ console: { warn() {}, info() {}, log() {}, error() {} }, alert(msg) { alerts.push(String(msg)); } });
   vm.runInContext(m[1], ctx);
+  vm.runInContext(s[1], ctx);
 });
 
 describe('LEGACY-context (standaard)', () => {
@@ -114,8 +118,80 @@ describe('index.html: alle bestaande literals zijn vervangen', () => {
     assert.strictEqual((outside.match(/dataPath\("(players|matches)"\)/g) || []).length, 6);
     assert.strictEqual((outside.match(/storageKey\("(players|matches|match_counter|storage_version)"\)/g) || []).length, 15);
   });
-  it('activeContext wordt nergens anders dan in de helpers gewijzigd (blijft LEGACY)', () => {
-    const outside = html.replace(/\/\/ BEGIN CONTEXT HELPERS[\s\S]*?\/\/ END CONTEXT HELPERS/, '');
-    assert.strictEqual((outside.match(/activeContext\s*=[^=]/g) || []).length, 0);
+  it('activeContext wordt alleen in het blok CONTEXT SWITCH toegewezen (setActiveContext)', () => {
+    const stripped = html
+      .replace(/\/\/ BEGIN CONTEXT HELPERS[\s\S]*?\/\/ END CONTEXT HELPERS/, '')
+      .replace(/\/\/ BEGIN CONTEXT SWITCH[\s\S]*?\/\/ END CONTEXT SWITCH/, '');
+    assert.strictEqual((stripped.match(/activeContext\s*=[^=]/g) || []).length, 0);
+    const sw = html.match(/\/\/ BEGIN CONTEXT SWITCH([\s\S]*?)\/\/ END CONTEXT SWITCH/)[1];
+    assert.strictEqual((sw.match(/activeContext\s*=[^=]/g) || []).length, 1);
+  });
+});
+
+describe('Fase 2B: normalizeContext en schrijfpoort', () => {
+  it('normalizeContext: legacy geeft LEGACY_CONTEXT terug', () => {
+    assert.strictEqual(run('normalizeContext({mode:"legacy"}) === LEGACY_CONTEXT'), true);
+  });
+  it('normalizeContext: geldig team geeft een bevroren nieuw object', () => {
+    assert.deepStrictEqual(JSON.parse(run('JSON.stringify(normalizeContext({mode:"team", teamId:"-Nab_1"}))')), { mode: 'team', teamId: '-Nab_1' });
+    assert.strictEqual(run('Object.isFrozen(normalizeContext({mode:"team", teamId:"t1"}))'), true);
+  });
+  it('normalizeContext: ongeldige invoer gooit een fout', () => {
+    for (const bad of ['undefined', 'null', '"team"', '42', '{}', '{mode:"bogus"}', '{mode:"team"}', '{mode:"team", teamId:""}', '{mode:"team", teamId:"../x"}', '{mode:"team", teamId:"a/b"}', '{mode:"team", teamId:5}']) {
+      assert.throws(() => run(`normalizeContext(${bad})`), /Ongeldig/, bad);
+    }
+  });
+  it('canWrite: legacy altijd true (ook zonder syncReady)', () => {
+    assert.strictEqual(run('syncReady = false; canWrite()'), true);
+  });
+  it('canWrite: team alleen true als syncReady true is', () => {
+    run('activeContext = {mode:"team", teamId:"t1"}; syncReady = false');
+    try {
+      assert.strictEqual(run('canWrite()'), false);
+      run('syncReady = true');
+      assert.strictEqual(run('canWrite()'), true);
+    } finally {
+      run('activeContext = LEGACY_CONTEXT; syncReady = false');
+    }
+  });
+  it('assertWritable: team niet ready geeft false en een melding; legacy geeft true zonder melding', () => {
+    alerts.length = 0;
+    assert.strictEqual(run('assertWritable("test")'), true);
+    assert.strictEqual(alerts.length, 0);
+    run('activeContext = {mode:"team", teamId:"t1"}; syncReady = false');
+    try {
+      assert.strictEqual(run('assertWritable("test")'), false);
+      assert.strictEqual(alerts.length, 1);
+    } finally {
+      run('activeContext = LEGACY_CONTEXT');
+    }
+  });
+});
+
+describe('Fase 2B: statische controles op index.html', () => {
+  const code = html;
+  it('setActiveContext heeft geen URL-parameter of localStorage-opslag van de teamkeuze', () => {
+    const sw = html.match(/\/\/ BEGIN CONTEXT SWITCH([\s\S]*?)\/\/ END CONTEXT SWITCH/)[1];
+    assert.ok(!/localStorage\.setItem/.test(sw));
+    assert.ok(!/location\.(search|hash)|URLSearchParams/.test(code));
+  });
+  it('resetSeason weigert in teammodus vóór de bevestigingsvraag', () => {
+    const body = html.match(/async function resetSeason\(\) \{([\s\S]*?)const confirmed =\s*confirm/)[1];
+    assert.ok(/activeContext\.mode !== "legacy"/.test(body));
+    assert.ok(/return;/.test(body));
+  });
+  it('alle schrijfacties hebben de schrijfpoort', () => {
+    for (const fn of ['finishMatch', 'deleteMatch', 'deletePlayer', 'addPlayer']) {
+      const re = new RegExp('function ' + fn + '\\([^)]*\\) \\{[\\s\\S]{0,300}?assertWritable\\("' + fn + '"\\)');
+      assert.ok(re.test(html), fn);
+    }
+    assert.ok(/function savePlayers\(\) \{\s*if \(!canWrite\(\)\)/.test(html));
+    assert.ok(/function saveMatches\(\) \{\s*if \(!canWrite\(\)\)/.test(html));
+    assert.ok(/async function savePlayersToFirebase\(playerList\) \{\s*if \(!canWrite\(\)\)/.test(html));
+    assert.ok(/async function saveMatchesToFirebase\(matchList, options\) \{\s*if \(!canWrite\(\)\)/.test(html));
+  });
+  it('legacy-matchnummering gebruikt nog steeds jo9_match_counter; team gebruikt max+1', () => {
+    assert.ok(/activeContext\.mode === "legacy"\) \{\s*matchNumber =\s*Number\(\s*localStorage\.getItem\(storageKey\("match_counter"\)\)/.test(html));
+    assert.ok(/Math\.max\(max, Number\(m && m\.matchNumber\) \|\| 0\)/.test(html));
   });
 });

@@ -1218,11 +1218,192 @@ function storageKey(kind, context = activeContext) {
         : "jo9_team_" + context.teamId + "_" + kind;
 }
 // END CONTEXT HELPERS
+
+// BEGIN CONTEXT STATE
+/*
+=========================================================
+ACTIEVE CONTEXT: STATE EN SCHRIJFPOORT (Fase 2B)
+
+contextGeneration  wordt bij ELKE contextwissel verhoogd. Elke
+                   asynchrone voortzetting vergelijkt zijn
+                   vastgelegde generatie hiermee.
+syncReady          true pas na een geslaagde eerste load van de
+                   HUIDIGE teamcontext.
+contextPhase       legacy: altijd "ready". Team: loading |
+                   ready | denied | error | needs-login |
+                   unverified.
+contextUid         uid van het account dat de teamcontext
+                   heeft geactiveerd.
+
+In LEGACY is canWrite() altijd true: het huidige gedrag
+blijft ongewijzigd. In een teamcontext mag er pas geschreven
+worden als syncReady true is.
+=========================================================
+*/
+
+let contextGeneration = 0;
+let syncReady = false;
+let contextPhase = "ready";
+let contextUid = null;
+
+function normalizeContext(context) {
+
+    if (!context || typeof context !== "object") {
+        throw new Error("Ongeldige context.");
+    }
+
+    if (context.mode === "legacy") {
+        return LEGACY_CONTEXT;
+    }
+
+    if (context.mode === "team") {
+
+        if (!isValidTeamId(context.teamId)) {
+            throw new Error("Ongeldig teamId: " + String(context.teamId));
+        }
+
+        return Object.freeze({ mode: "team", teamId: context.teamId });
+    }
+
+    throw new Error("Ongeldige context.");
+}
+
+function canWrite() {
+    return activeContext.mode === "legacy" || syncReady === true;
+}
+
+function assertWritable(action) {
+
+    if (canWrite()) {
+        return true;
+    }
+
+    console.warn(
+        "⛔ Actie geblokkeerd (" + action + "): het team is nog niet " +
+        "geladen of je hebt er geen toegang toe. Er is niets opgeslagen."
+    );
+
+    alert(
+        "Het team is nog niet geladen of je hebt er geen toegang toe.\n\n" +
+        "Er is niets opgeslagen."
+    );
+
+    return false;
+}
+// END CONTEXT STATE
     
 let players = loadPlayers();
 let matches = loadMatches();
 let currentSchedule = null;
 let currentLineupRound = null;
+
+// BEGIN CONTEXT SWITCH
+/*
+=========================================================
+CONTEXT WISSELEN (Fase 2B) - alleen een technische laag.
+
+Volgorde:
+  A/B  schrijven blokkeren + generatie verhogen
+  C    luisteraars stoppen
+  D    oude in-memory state leegmaken
+  E    nieuwe context laden
+  F    pas na succesvolle load luisteraars starten
+  G    syncReady = true
+
+Een ongeldige context gooit een fout; de bestaande context
+blijft dan ongewijzigd. Er is nooit een stilzwijgende terugval
+naar legacy.
+=========================================================
+*/
+
+function currentAuthUid() {
+
+    const user =
+        window.jo9Firebase &&
+        window.jo9Firebase.auth &&
+        window.jo9Firebase.auth.currentUser;
+
+    return user && !user.isAnonymous ? user.uid : null;
+}
+
+function renderAllForContext() {
+    renderPlayers();
+    renderPlayerManagement();
+    renderMatches();
+}
+
+function clearContextState() {
+
+    currentSchedule = null;
+    currentLineupRound = null;
+
+    const section = document.getElementById("scheduleSection");
+    if (section) section.style.display = "none";
+
+    const modal = document.getElementById("lineupModal");
+    if (modal) modal.style.display = "none";
+
+    ["rounds", "summary", "error"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = "";
+    });
+}
+
+function setActiveContext(context) {
+
+    const next = normalizeContext(context);
+
+    const same =
+        next.mode === activeContext.mode &&
+        next.teamId === activeContext.teamId;
+
+    if (same && contextPhase === "ready") {
+        return activeContext;
+    }
+
+    // A/B: schrijven blokkeren en generatie verhogen
+    contextGeneration++;
+    syncReady = false;
+    activeContext = next;
+    contextPhase = next.mode === "legacy" ? "ready" : "loading";
+    contextUid = next.mode === "team" ? currentAuthUid() : null;
+
+    // C: luisteraars van de vorige context stoppen
+    if (window.jo9Firebase && window.jo9Firebase.stopSync) {
+        window.jo9Firebase.stopSync();
+    }
+
+    // D: oude in-memory state leegmaken
+    clearContextState();
+
+    if (next.mode === "legacy") {
+        players = loadPlayers();
+        matches = loadMatches();
+    } else {
+        players = [];
+        matches = [];
+    }
+
+    renderAllForContext();
+
+    document.body.setAttribute(
+        "data-context",
+        next.mode === "legacy" ? "legacy" : "team:" + next.teamId
+    );
+
+    console.info(
+        "ℹ️ Actieve context: " +
+        (next.mode === "legacy" ? "LEGACY" : "team " + next.teamId)
+    );
+
+    // E/F/G: nieuwe context laden en pas daarna luisteraars starten
+    if (window.jo9Firebase && window.jo9Firebase.startSync) {
+        window.jo9Firebase.startSync();
+    }
+
+    return next;
+}
+// END CONTEXT SWITCH
 
 const lineupPositions = [
     "top-left",
@@ -1479,6 +1660,11 @@ function renderLineupPreview(roundIndex) {
 
 function loadPlayers() {
 
+    // Alleen legacy leest uit localStorage en zaait DEFAULT_PLAYERS.
+    if (activeContext.mode !== "legacy") {
+        return [];
+    }
+
     const saved =
         localStorage.getItem(storageKey("players"));
 
@@ -1553,6 +1739,11 @@ function loadPlayers() {
 
 function savePlayers() {
 
+    if (!canWrite()) {
+        console.warn("⛔ Spelers niet opgeslagen: team is nog niet geladen.");
+        return;
+    }
+
     localStorage.setItem(
         storageKey("players"),
         JSON.stringify(players)
@@ -1576,6 +1767,10 @@ function savePlayers() {
    ===================================================== */
 
 function loadMatches() {
+
+    if (activeContext.mode !== "legacy") {
+        return [];
+    }
 
     const saved =
         localStorage.getItem(storageKey("matches"));
@@ -1610,6 +1805,11 @@ function loadMatches() {
 
 
 function saveMatches() {
+
+    if (!canWrite()) {
+        console.warn("⛔ Wedstrijden niet opgeslagen: team is nog niet geladen.");
+        return;
+    }
 
     localStorage.setItem(
         storageKey("matches"),
@@ -2478,6 +2678,10 @@ function finishMatch() {
         return;
     }
 
+    if (!assertWritable("finishMatch")) {
+        return;
+    }
+
 
   const {
     matchDate,
@@ -2506,17 +2710,35 @@ function finishMatch() {
     Houd een wedstrijdnummer bij.
     */
 
-    let matchNumber =
-        Number(
-            localStorage.getItem(storageKey("match_counter")) || 0
+    let matchNumber;
+
+    if (activeContext.mode === "legacy") {
+
+        matchNumber =
+            Number(
+                localStorage.getItem(storageKey("match_counter")) || 0
+            );
+
+        matchNumber++;
+
+        localStorage.setItem(
+            storageKey("match_counter"),
+            String(matchNumber)
         );
 
-    matchNumber++;
+    } else {
 
-    localStorage.setItem(
-        storageKey("match_counter"),
-        String(matchNumber)
-    );
+        // Teammodus: geen teller per apparaat, maar het hoogste
+        // nummer van de geladen wedstrijden + 1. Gelijktijdige
+        // trainers kunnen nog een nummerconflict krijgen; dat lost
+        // de latere match-ID-fase op.
+        matchNumber =
+            matches.reduce(
+                (max, m) =>
+                    Math.max(max, Number(m && m.matchNumber) || 0),
+                0
+            ) + 1;
+    }
 
 
     /*
@@ -3163,6 +3385,14 @@ function renderMatches() {
 
 async function deleteMatch(matchIndex) {
 
+    if (!assertWritable("deleteMatch")) {
+        return;
+    }
+
+    // Context vastleggen: na de await mag er niets meer naar een
+    // ander team worden geschreven.
+    const ctxGen = contextGeneration;
+
     const match =
     matches[matchIndex];
 
@@ -3213,7 +3443,8 @@ const newMatches =
 
         const firebaseSaved =
             await window.jo9Firebase.saveMatchesToFirebase(
-                newMatches
+                newMatches,
+                { allowEmpty: true }
             );
 
         if (!firebaseSaved) {
@@ -3235,6 +3466,11 @@ const newMatches =
     WEDSTRIJDEN LOKAAL BIJWERKEN
     =========================================================
     */
+
+    if (ctxGen !== contextGeneration) {
+        console.warn("⚠️ Context gewisseld tijdens verwijderen: lokale state niet aangepast.");
+        return;
+    }
 
     matches = newMatches;
 
@@ -3419,6 +3655,10 @@ function selectPlayerForManagement(playerId) {
 
 function deletePlayer(playerId) {
 
+    if (!assertWritable("deletePlayer")) {
+        return;
+    }
+
     const player =
         players.find(player => player.id === playerId);
 
@@ -3462,6 +3702,10 @@ function deletePlayer(playerId) {
    ========================================================= */
 
 function addPlayer() {
+
+    if (!assertWritable("addPlayer")) {
+        return;
+    }
 
     const firstName =
         document
@@ -3518,6 +3762,15 @@ function addPlayer() {
    ========================================================= */
 
 async function resetSeason() {
+
+    // Een teamomgeving is een seizoen: nooit resetten/wissen.
+    if (activeContext.mode !== "legacy") {
+        alert(
+            "Seizoen resetten is niet beschikbaar in een teamomgeving.\n\n" +
+            "Er is niets gewist."
+        );
+        return;
+    }
 
     const confirmed =
         confirm(
@@ -3731,6 +3984,11 @@ databaseURL: "https://jo9-wisselmeester-test-default-rtdb.europe-west1.firebased
 
     async function savePlayersToFirebase(playerList) {
 
+        if (!canWrite()) {
+            console.warn("⛔ Spelers niet opgeslagen in Firebase: team is nog niet geladen.");
+            return false;
+        }
+
         try {
 
             await set(
@@ -3758,7 +4016,25 @@ databaseURL: "https://jo9-wisselmeester-test-default-rtdb.europe-west1.firebased
     // WEDSTRIJDEN OPSLAAN IN FIREBASE
     // =========================================================
 
-async function saveMatchesToFirebase(matchList) {
+async function saveMatchesToFirebase(matchList, options) {
+
+    if (!canWrite()) {
+        console.warn("⛔ Wedstrijden niet opgeslagen in Firebase: team is nog niet geladen.");
+        return false;
+    }
+
+    // Teammodus: een lege lijst wist alle wedstrijden. Alleen toegestaan
+    // als de aanroeper dat expliciet vraagt (bijv. de laatste wedstrijd
+    // verwijderen), nooit via een seizoensreset.
+    if (
+        activeContext.mode === "team" &&
+        Array.isArray(matchList) &&
+        matchList.length === 0 &&
+        !(options && options.allowEmpty)
+    ) {
+        console.warn("⛔ Lege wedstrijdlijst niet geschreven in teammodus.");
+        return false;
+    }
 
     try {
 
@@ -3964,13 +4240,233 @@ function watchPlayersFromFirebase(onCancel) {
 
 
     // =========================================================
+    // TEAMMODUS: STRIKTE SYNCHRONISATIE (Fase 2B)
+    //
+    // - lege lijst = leeg team (geen seed, geen DEFAULT_PLAYERS)
+    // - leesfout = fout/denied, NOOIT "leeg"
+    // - niets schrijven voór de eerste geslaagde load
+    // - generatiecontrole na elke await en in elke callback
+    // =========================================================
+
+    function normalizePlayers(value) {
+
+        return Object.values(value || {}).map(player => ({
+            ...player,
+            history:
+                player.history || 0,
+            advantageHistory:
+                Array.isArray(player.advantageHistory)
+                    ? player.advantageHistory
+                    : []
+        }));
+    }
+
+    function isPermissionDenied(error) {
+
+        return !!error && (
+            error.code === "PERMISSION_DENIED" ||
+            error.code === "permission-denied" ||
+            /permission[_ ]denied/i.test(String(error.message || ""))
+        );
+    }
+
+    function withTimeout(promise, ms) {
+
+        let timer;
+
+        const timeout = new Promise((_, reject) => {
+            timer = setTimeout(() => {
+                const e = new Error("timeout");
+                e.code = "timeout";
+                reject(e);
+            }, ms);
+        });
+
+        return Promise.race([promise, timeout])
+            .finally(() => clearTimeout(timer));
+    }
+
+    function clearTeamState(phase) {
+
+        syncReady = false;
+        contextPhase = phase;
+
+        clearContextState();
+
+        players = [];
+        matches = [];
+
+        renderAllForContext();
+    }
+
+    function watchTeamMatches(ctx, ctxGen, syncGen, onCancel) {
+
+        return onValue(
+            ref(db, dataPath("matches", ctx)),
+            snapshot => {
+
+                if (ctxGen !== contextGeneration || syncGen !== syncGeneration) {
+                    return;
+                }
+
+                matches =
+                    snapshot.exists()
+                        ? Object.values(snapshot.val())
+                        : [];
+
+                localStorage.setItem(
+                    storageKey("matches", ctx),
+                    JSON.stringify(matches)
+                );
+
+                renderMatches();
+            },
+            onCancel
+        );
+    }
+
+    function watchTeamPlayers(ctx, ctxGen, syncGen, onCancel) {
+
+        return onValue(
+            ref(db, dataPath("players", ctx)),
+            snapshot => {
+
+                if (ctxGen !== contextGeneration || syncGen !== syncGeneration) {
+                    return;
+                }
+
+                players =
+                    normalizePlayers(
+                        snapshot.exists() ? snapshot.val() : {}
+                    );
+
+                localStorage.setItem(
+                    storageKey("players", ctx),
+                    JSON.stringify(players)
+                );
+
+                renderPlayers();
+                renderPlayerManagement();
+            },
+            onCancel
+        );
+    }
+
+    async function runTeamSync(gen, ctx, ctxGen) {
+
+        const stale = () =>
+            gen !== syncGeneration || ctxGen !== contextGeneration;
+
+        console.log(
+            "✅ Team-synchronisatie gestart (#" + gen + ") voor team " +
+            ctx.teamId + "."
+        );
+
+        const user = auth.currentUser;
+
+        if (!user || user.isAnonymous) {
+            syncReady = false;
+            contextPhase = "needs-login";
+            return "blocked";
+        }
+
+        if (!user.emailVerified) {
+            syncReady = false;
+            contextPhase = "unverified";
+            return "blocked";
+        }
+
+        const readAll = () => Promise.all([
+            withTimeout(get(ref(db, dataPath("players", ctx))), 15000),
+            withTimeout(get(ref(db, dataPath("matches", ctx))), 15000)
+        ]);
+
+        let snapshots;
+
+        try {
+
+            try {
+
+                snapshots = await readAll();
+
+            } catch (error) {
+
+                if (stale()) {
+                    return "aborted";
+                }
+
+                if (!isPermissionDenied(error)) {
+                    throw error;
+                }
+
+                // Token mogelijk verouderd: eenmaal verversen en opnieuw proberen.
+                await user.getIdToken(true);
+
+                if (stale()) {
+                    return "aborted";
+                }
+
+                snapshots = await readAll();
+            }
+
+        } catch (error) {
+
+            if (stale()) {
+                return "aborted";
+            }
+
+            console.error("❌ Team laden mislukt:", error);
+
+            clearTeamState(
+                isPermissionDenied(error) ? "denied" : "error"
+            );
+
+            return "failed";
+        }
+
+        if (stale()) {
+            return "aborted";
+        }
+
+        // Vanaf hier geen await meer tot syncReady = true.
+
+        players =
+            normalizePlayers(
+                snapshots[0].exists() ? snapshots[0].val() : {}
+            );
+
+        matches =
+            snapshots[1].exists()
+                ? Object.values(snapshots[1].val())
+                : [];
+
+        try {
+            localStorage.setItem(storageKey("players", ctx), JSON.stringify(players));
+            localStorage.setItem(storageKey("matches", ctx), JSON.stringify(matches));
+        } catch (e) { }
+
+        renderAllForContext();
+
+        unsubscribers = [
+            watchTeamMatches(ctx, ctxGen, gen, error => onListenerCancelled(gen, error)),
+            watchTeamPlayers(ctx, ctxGen, gen, error => onListenerCancelled(gen, error))
+        ];
+
+        syncReady = true;
+        contextPhase = "ready";
+
+        return "ok";
+    }
+
+
+    // =========================================================
     // BESTAANDE SYNCHRONISATIE (ongewijzigd, nu in een functie)
     //
     // Wordt gestart door ensureSync() zodra er een Firebase-
     // gebruiker is (anoniem of met e-mailaccount).
     // =========================================================
 
-    async function runInitialSync(gen) {
+    async function runLegacySync(gen) {
 
             console.log(
                 "✅ Firebase-sessie actief, synchronisatie gestart (#" +
@@ -3988,6 +4484,10 @@ function watchPlayersFromFirebase(onCancel) {
 
             const playersSnapshot =
                 await get(playersRef);
+
+            if (gen !== syncGeneration) {
+                return "aborted";
+            }
 
 
             if (!playersSnapshot.exists()) {
@@ -4023,8 +4523,14 @@ function watchPlayersFromFirebase(onCancel) {
             // WEDSTRIJDEN LADEN
             // -------------------------------------------------
 
-            matches =
+            const loadedMatches =
                 await loadMatchesFromFirebase();
+
+            if (gen !== syncGeneration) {
+                return "aborted";
+            }
+
+            matches = loadedMatches;
 
 
             renderMatches();
@@ -4043,6 +4549,16 @@ function watchPlayersFromFirebase(onCancel) {
                 )
             ];
 
+    }
+
+
+    async function runInitialSync(gen) {
+
+        if (activeContext.mode === "legacy") {
+            return runLegacySync(gen);
+        }
+
+        return runTeamSync(gen, activeContext, contextGeneration);
     }
 
 
@@ -4074,9 +4590,16 @@ function watchPlayersFromFirebase(onCancel) {
 
         try {
 
-            await runInitialSync(gen);
+            const result = await runInitialSync(gen);
 
-            syncState = "running";
+            if (gen !== syncGeneration) {
+                return;
+            }
+
+            syncState =
+                (result === "failed" || result === "blocked")
+                    ? "idle"
+                    : "running";
 
         } catch (error) {
 
@@ -4085,7 +4608,9 @@ function watchPlayersFromFirebase(onCancel) {
                 error
             );
 
-            syncState = "idle";
+            if (gen === syncGeneration) {
+                syncState = "idle";
+            }
 
         }
 
@@ -4101,6 +4626,12 @@ function watchPlayersFromFirebase(onCancel) {
             "⚠️ Firebase-listener beëindigd, synchronisatie wordt hersteld.",
             error
         );
+
+        // Teammodus: meteen niet meer schrijven tot opnieuw geladen.
+        if (activeContext.mode === "team") {
+            syncReady = false;
+            contextPhase = "loading";
+        }
 
         unsubscribers.forEach(unsubscribe => {
             try { unsubscribe(); } catch (e) { }
@@ -4121,6 +4652,10 @@ function watchPlayersFromFirebase(onCancel) {
                 "⚠️ Te vaak herstart; synchronisatie wacht op de volgende aanmelding."
             );
 
+            if (activeContext.mode === "team") {
+                clearTeamState("error");
+            }
+
             return;
         }
 
@@ -4130,11 +4665,47 @@ function watchPlayersFromFirebase(onCancel) {
 
     }
 
+    function stopSync() {
+
+        unsubscribers.forEach(unsubscribe => {
+            try { unsubscribe(); } catch (e) { }
+        });
+
+        unsubscribers = [];
+        syncGeneration++;
+        syncState = "idle";
+        restartTimes = [];
+    }
+
+    function startSync() {
+        return ensureSync();
+    }
+
     window.jo9Firebase.getSyncStatus = () => ({
         state: syncState,
         generation: syncGeneration,
-        listeners: unsubscribers.length
+        listeners: unsubscribers.length,
+        contextMode: activeContext.mode,
+        teamId: activeContext.teamId,
+        contextGeneration: contextGeneration,
+        phase: contextPhase,
+        ready: canWrite()
     });
+
+    window.jo9Firebase.stopSync = stopSync;
+    window.jo9Firebase.startSync = startSync;
+
+    // TEST/DEV-functie. Geen UI, geen URL-parameter, geen opslag:
+    // een herlading start altijd weer in LEGACY.
+    window.jo9Firebase.setActiveContext = function (context) {
+
+        console.warn(
+            "⚠️ TEST/dev-functie: setActiveContext(). Niet voor normaal " +
+            "gebruik. Een herlading van de pagina start weer in LEGACY."
+        );
+
+        return setActiveContext(context);
+    };
 
 
     // =========================================================
@@ -4592,6 +5163,25 @@ function watchPlayersFromFirebase(onCancel) {
     onAuthStateChanged(auth, user => {
 
         renderAuthUI(user);
+
+        // Een teamcontext is alleen geldig voor het account dat hem
+        // heeft geactiveerd. Anders expliciet terug naar legacy.
+        if (activeContext.mode === "team") {
+
+            if (user && !user.isAnonymous && contextUid === null) {
+
+                // geactiveerd zonder account: nu het account adopteren
+                contextUid = user.uid;
+
+            } else if (!user || user.isAnonymous || user.uid !== contextUid) {
+
+                console.warn(
+                    "⚠️ Teamcontext niet meer geldig voor deze gebruiker: terug naar LEGACY."
+                );
+
+                setActiveContext(LEGACY_CONTEXT);
+            }
+        }
 
         if (!user) {
 
