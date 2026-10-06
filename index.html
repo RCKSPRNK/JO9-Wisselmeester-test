@@ -627,6 +627,47 @@ button:hover {
     font-weight: bold;
 }
 
+.team-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #dfe5ea;
+    border-radius: 12px;
+    margin-bottom: 8px;
+}
+
+.team-row.active {
+    border-color: #1c5b2a;
+    background: #f1f8f2;
+}
+
+.team-row.unavailable {
+    opacity: .6;
+}
+
+.team-info {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.team-name {
+    font-weight: bold;
+}
+
+.team-badge {
+    font-size: 13px;
+    font-weight: bold;
+    color: #1c5b2a;
+    white-space: nowrap;
+}
+
+.team-row button {
+    padding: 10px 14px;
+    font-size: 14px;
+}
+
 @media (max-width: 600px) {
 
     .minutes-table {
@@ -796,7 +837,7 @@ button:hover {
                 <span class="auth-email" id="authVerifiedEmail"></span>
             </p>
 
-            <p class="small">Je hebt nog geen teams.</p>
+            <p class="small">Je teams staan onder “Mijn teams”.</p>
 
             <div class="auth-actions">
                 <button type="button" class="secondary" id="authLogoutVerified">Uitloggen</button>
@@ -804,6 +845,24 @@ button:hover {
 
         </div>
 
+    </div>
+
+</div>
+
+<div class="card" id="teamsCard" style="display:none;">
+
+    <h2>Mijn teams</h2>
+
+    <div id="teamsMessage" class="auth-message" style="display:none;"></div>
+
+    <div id="teamsList"></div>
+
+    <p class="small" id="teamsEmpty" style="display:none;">
+        Je hebt nog geen teams. Je gebruikt nu de oude omgeving.
+    </p>
+
+    <div class="auth-actions">
+        <button type="button" class="secondary" id="teamsRefresh">Vernieuwen</button>
     </div>
 
 </div>
@@ -1246,6 +1305,10 @@ let syncReady = false;
 let contextPhase = "ready";
 let contextUid = null;
 
+// true zolang na openen/herladen nog wordt bepaald of een opgeslagen
+// teamvoorkeur hersteld moet worden. Legacy schrijft en synct dan nog niet.
+let restorePending = false;
+
 function normalizeContext(context) {
 
     if (!context || typeof context !== "object") {
@@ -1269,7 +1332,12 @@ function normalizeContext(context) {
 }
 
 function canWrite() {
-    return activeContext.mode === "legacy" || syncReady === true;
+
+    if (activeContext.mode === "legacy") {
+        return restorePending !== true;
+    }
+
+    return syncReady === true;
 }
 
 function assertWritable(action) {
@@ -1404,6 +1472,227 @@ function setActiveContext(context) {
     return next;
 }
 // END CONTEXT SWITCH
+
+// BEGIN TEAM PICKER LOGIC
+/*
+=========================================================
+MIJN TEAMS: ZUIVERE LOGICA (Fase 2C-1)
+
+Geen DOM, geen Firebase: alleen validatie en beslissingen,
+zodat dit los te testen is.
+
+- users/{uid}/teams is alleen een INDEX. De echte toegang
+  bepaalt teams/{teamId}/members/{uid} (Rules).
+- De teamvoorkeur staat per account en per apparaat in
+  localStorage: jo9_active_team_{uid}.
+- Een voorkeur wordt NOOIT gewist bij een tijdelijke fout;
+  alleen als vaststaat dat het team er niet (meer) is of dat
+  er geen toegang meer is.
+=========================================================
+*/
+
+const ACTIVE_TEAM_PREF_PREFIX = "jo9_active_team_";
+const MAX_TEAMS_LISTED = 20;
+
+function isValidUid(uid) {
+    return typeof uid === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(uid);
+}
+
+function activeTeamPrefKey(uid) {
+
+    if (!isValidUid(uid)) {
+        throw new Error("Ongeldige uid.");
+    }
+
+    return ACTIVE_TEAM_PREF_PREFIX + uid;
+}
+
+function readActiveTeamPref(uid, storage) {
+
+    storage = storage || localStorage;
+
+    let key;
+
+    try {
+        key = activeTeamPrefKey(uid);
+    } catch (e) {
+        return null;
+    }
+
+    let raw;
+
+    try {
+        raw = storage.getItem(key);
+    } catch (e) {
+        return null;
+    }
+
+    if (raw === null || raw === undefined) {
+        return null;
+    }
+
+    // Een gemanipuleerde of beschadigde waarde wordt genegeerd en opgeruimd.
+    if (!isValidTeamId(raw)) {
+
+        try {
+            storage.removeItem(key);
+        } catch (e) { }
+
+        return null;
+    }
+
+    return raw;
+}
+
+function writeActiveTeamPref(uid, teamId, storage) {
+
+    storage = storage || localStorage;
+
+    if (!isValidTeamId(teamId)) {
+        throw new Error("Ongeldig teamId: " + String(teamId));
+    }
+
+    const key = activeTeamPrefKey(uid);
+
+    try {
+        storage.setItem(key, teamId);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function clearActiveTeamPref(uid, storage) {
+
+    storage = storage || localStorage;
+
+    let key;
+
+    try {
+        key = activeTeamPrefKey(uid);
+    } catch (e) {
+        return;
+    }
+
+    try {
+        storage.removeItem(key);
+    } catch (e) { }
+}
+
+function isPermissionDeniedError(error) {
+
+    return !!error && (
+        error.code === "PERMISSION_DENIED" ||
+        error.code === "permission-denied" ||
+        /permission[_ ]denied/i.test(String(error.message || ""))
+    );
+}
+
+// users/{uid}/teams -> lijst met geldige teamId's (alleen waarde true).
+function parseTeamIndex(value) {
+
+    if (!value || typeof value !== "object") {
+        return [];
+    }
+
+    return Object.keys(value)
+        .filter(id => value[id] === true && isValidTeamId(id))
+        .sort()
+        .slice(0, MAX_TEAMS_LISTED);
+}
+
+// settled: drie resultaten (clubName, teamName, season):
+//   { status: "fulfilled", value } of { status: "rejected", reason }
+//
+// available    alle reads gelukt (lid van het team)
+// unavailable  alle mislukte reads zijn PERMISSION_DENIED: het team
+//              bestaat niet (meer) of de gebruiker is geen lid (meer)
+// error        minstens een tijdelijke fout: NIET definitief
+function classifyTeamMeta(teamId, settled) {
+
+    const base = { id: teamId, clubName: "", teamName: "", season: "" };
+
+    const rejected = settled.filter(r => !r || r.status !== "fulfilled");
+
+    if (rejected.length === 0) {
+
+        const text = v => (typeof v === "string" ? v.trim() : "");
+
+        return {
+            ...base,
+            status: "available",
+            clubName: text(settled[0].value),
+            teamName: text(settled[1].value),
+            season: text(settled[2].value)
+        };
+    }
+
+    const transient =
+        rejected.some(r => !r || !isPermissionDeniedError(r.reason));
+
+    return { ...base, status: transient ? "error" : "unavailable" };
+}
+
+function teamLabel(team) {
+
+    return [team.clubName, team.teamName]
+        .filter(Boolean)
+        .join(" · ") || team.id;
+}
+
+function sortTeams(teams) {
+
+    const rank = { available: 0, error: 1, unavailable: 2 };
+
+    return teams.slice().sort((a, b) =>
+        (rank[a.status] - rank[b.status]) ||
+        teamLabel(a).localeCompare(teamLabel(b), "nl")
+    );
+}
+
+// Beslist wat er na openen/herladen met een opgeslagen voorkeur gebeurt.
+//
+//   pref      opgeslagen teamId of null
+//   listOk    true als de teamlijst succesvol is geladen
+//   teams     geclassificeerde teams (classifyTeamMeta)
+//
+// action "team"   -> teamsync starten voor teamId
+// action "legacy" -> legacy-sync starten
+// clearPref       -> voorkeur wissen (alleen bij een definitieve uitkomst)
+// retry           -> tijdelijke fout: voorkeur blijft, opnieuw proberen mogelijk
+function decideRestore(input) {
+
+    const pref = input && input.pref;
+
+    if (!pref) {
+        return { action: "legacy", teamId: null, clearPref: false, notice: null, retry: false };
+    }
+
+    if (!isValidTeamId(pref)) {
+        return { action: "legacy", teamId: null, clearPref: true, notice: null, retry: false };
+    }
+
+    if (!input.listOk) {
+        return { action: "legacy", teamId: null, clearPref: false, notice: "temporary-error", retry: true };
+    }
+
+    const team = (input.teams || []).find(t => t && t.id === pref);
+
+    if (!team) {
+        return { action: "legacy", teamId: null, clearPref: true, notice: "team-not-in-list", retry: false };
+    }
+
+    if (team.status === "available") {
+        return { action: "team", teamId: pref, clearPref: false, notice: null, retry: false };
+    }
+
+    if (team.status === "unavailable") {
+        return { action: "legacy", teamId: null, clearPref: true, notice: "team-unavailable", retry: false };
+    }
+
+    return { action: "legacy", teamId: null, clearPref: false, notice: "temporary-error", retry: true };
+}
+// END TEAM PICKER LOGIC
 
 const lineupPositions = [
     "top-left",
@@ -4584,6 +4873,11 @@ function watchPlayersFromFirebase(onCancel) {
             return;
         }
 
+        // Legacy start pas nadat een opgeslagen teamvoorkeur is beoordeeld.
+        if (restorePending && activeContext.mode === "legacy") {
+            return;
+        }
+
         syncState = "starting";
 
         const gen = ++syncGeneration;
@@ -5106,6 +5400,8 @@ function watchPlayersFromFirebase(onCancel) {
                         "Je e-mailadres is bevestigd."
                     );
 
+                    onVerifiedAccount(auth.currentUser);
+
                 } else {
 
                     showAuthMessage(
@@ -5149,6 +5445,592 @@ function watchPlayersFromFirebase(onCancel) {
 
 
     // =========================================================
+    // MIJN TEAMS (Fase 2C-1)
+    //
+    // - users/{uid}/teams is alleen een INDEX (lijst). De echte
+    //   toegang bepaalt teams/{teamId}/members/{uid} via de Rules.
+    // - De keuze wordt per account en per apparaat bewaard
+    //   (jo9_active_team_{uid}).
+    // - Bij een opgeslagen voorkeur start de legacy-sync pas nadat
+    //   de teamkeuze bekend is (restorePending, zie ensureSync).
+    // - Er wordt niets naar Firebase geschreven.
+    // =========================================================
+
+    const DEFAULT_BRANDING = {
+        clubName: APP_CONFIG.clubName,
+        teamName: APP_CONFIG.teamName
+    };
+
+    const TEAM_NOTICES = {
+        "team-unavailable": {
+            type: "info",
+            text: "Je laatst gebruikte team is niet meer beschikbaar. Je gebruikt nu de oude omgeving."
+        },
+        "team-not-in-list": {
+            type: "info",
+            text: "Je laatst gebruikte team staat niet meer in je teams. Je gebruikt nu de oude omgeving."
+        },
+        "temporary-error": {
+            type: "error",
+            text: "Je teams konden nu niet worden geladen. Je werkt tijdelijk in de oude omgeving. Kies 'Opnieuw proberen'."
+        },
+        "list-error": {
+            type: "error",
+            text: "Je teams konden niet worden geladen. Probeer het opnieuw."
+        }
+    };
+
+    let teamsGen = 0;
+    let restoreTimer = null;
+    let phasePollTimer = null;
+
+    let teamsState = {
+        uid: null,
+        phase: "idle",
+        teams: [],
+        notice: null,
+        retryRestore: false
+    };
+
+    // Header en clubnaam volgen het actieve team. Alleen weergave:
+    // de rekenlogica leest APP_CONFIG niet.
+    function applyTeamBranding(meta) {
+
+        APP_CONFIG.clubName =
+            meta && meta.clubName ? meta.clubName : DEFAULT_BRANDING.clubName;
+
+        APP_CONFIG.teamName =
+            meta && meta.teamName ? meta.teamName : DEFAULT_BRANDING.teamName;
+
+        applyBranding();
+    }
+
+    function syncHeader() {
+
+        const meta =
+            (activeContext.mode === "team" && contextPhase === "ready")
+                ? teamsState.teams.find(t => t.id === activeContext.teamId)
+                : null;
+
+        applyTeamBranding(meta || null);
+    }
+
+    async function readTeamIndex(user) {
+
+        if (!isValidUid(user.uid)) {
+            throw new Error("Ongeldige uid.");
+        }
+
+        const path = "users/" + user.uid + "/teams";
+
+        const read = () => withTimeout(get(ref(db, path)), 10000);
+
+        let snapshot;
+
+        try {
+
+            snapshot = await read();
+
+        } catch (error) {
+
+            if (!isPermissionDenied(error)) {
+                throw error;
+            }
+
+            // Token mogelijk verouderd (net bevestigd): eenmaal verversen.
+            await user.getIdToken(true);
+
+            snapshot = await read();
+        }
+
+        return parseTeamIndex(snapshot.exists() ? snapshot.val() : null);
+    }
+
+    // Alleen de drie metadata-velden, nooit players/matches/members.
+    async function readTeamMeta(teamId) {
+
+        const fields = ["clubName", "teamName", "season"];
+
+        const settled = await Promise.allSettled(
+            fields.map(field =>
+                withTimeout(get(ref(db, "teams/" + teamId + "/" + field)), 10000)
+            )
+        );
+
+        return classifyTeamMeta(
+            teamId,
+            settled.map(r =>
+                r.status === "fulfilled"
+                    ? { status: "fulfilled", value: r.value.exists() ? r.value.val() : null }
+                    : { status: "rejected", reason: r.reason }
+            )
+        );
+    }
+
+    async function refreshTeams(user) {
+
+        const gen = ++teamsGen;
+        const uid = user.uid;
+
+        const stale = () =>
+            gen !== teamsGen ||
+            !auth.currentUser ||
+            auth.currentUser.uid !== uid;
+
+        teamsState = { uid, phase: "loading", teams: [], notice: null, retryRestore: false };
+        renderTeams();
+
+        try {
+
+            const ids = await readTeamIndex(user);
+
+            if (stale()) {
+                return "aborted";
+            }
+
+            const metas = await Promise.all(ids.map(readTeamMeta));
+
+            if (stale()) {
+                return "aborted";
+            }
+
+            teamsState = {
+                uid,
+                phase: "ready",
+                teams: sortTeams(metas),
+                notice: null,
+                retryRestore: false
+            };
+
+        } catch (error) {
+
+            if (stale()) {
+                return "aborted";
+            }
+
+            console.error("❌ Teams laden mislukt:", error);
+
+            teamsState = {
+                uid,
+                phase: "error",
+                teams: [],
+                notice: TEAM_NOTICES["list-error"],
+                retryRestore: false
+            };
+        }
+
+        renderTeams();
+
+        return teamsState.phase === "ready" ? "ready" : "error";
+    }
+
+    function finishRestore(uid, decision) {
+
+        if (!restorePending) {
+            return;
+        }
+
+        restorePending = false;
+
+        clearTimeout(restoreTimer);
+        restoreTimer = null;
+
+        teamsState.retryRestore = !!decision.retry;
+
+        if (decision.action === "team") {
+
+            try {
+
+                setActiveContext({ mode: "team", teamId: decision.teamId });
+                pollContextPhase();
+                renderTeams();
+                return;
+
+            } catch (error) {
+
+                console.error("❌ Team herstellen mislukt:", error);
+
+                decision = {
+                    action: "legacy",
+                    clearPref: false,
+                    notice: "temporary-error",
+                    retry: true
+                };
+
+                teamsState.retryRestore = true;
+            }
+        }
+
+        if (decision.clearPref) {
+            clearActiveTeamPref(uid);
+        }
+
+        teamsState.notice = decision.notice ? TEAM_NOTICES[decision.notice] : null;
+
+        renderTeams();
+
+        // Pas nu start de legacy-sync (ensureSync wachtte op restorePending).
+        ensureSync();
+    }
+
+    // Aangeroepen bij elk geverifieerd, niet-anoniem account.
+    // Het synchrone deel (voor de eerste await) zet restorePending
+    // vóórdat de auth-handler ensureSync() aanroept.
+    async function onVerifiedAccount(user) {
+
+        try {
+
+            const uid = user.uid;
+
+            const pref = readActiveTeamPref(uid);
+
+            restorePending = !!pref;
+
+            clearTimeout(restoreTimer);
+            restoreTimer = null;
+
+            const loading = refreshTeams(user);
+
+            const myGen = teamsGen;
+
+            if (restorePending) {
+
+                // Vangnet: een hangende read mag de app niet blokkeren.
+                restoreTimer = setTimeout(() => {
+
+                    if (restorePending && teamsGen === myGen) {
+
+                        console.warn("⚠️ Teamkeuze herstellen duurde te lang: tijdelijk legacy.");
+
+                        finishRestore(
+                            uid,
+                            decideRestore({ pref, listOk: false, teams: [] })
+                        );
+                    }
+
+                }, 25000);
+            }
+
+            const result = await loading;
+
+            if (result === "aborted" || !restorePending) {
+                return;
+            }
+
+            finishRestore(
+                uid,
+                decideRestore({
+                    pref,
+                    listOk: result === "ready",
+                    teams: teamsState.teams
+                })
+            );
+
+        } catch (error) {
+
+            console.error("❌ Mijn teams mislukt:", error);
+
+            if (restorePending) {
+                finishRestore(
+                    user.uid,
+                    { action: "legacy", clearPref: false, notice: "temporary-error", retry: true }
+                );
+            }
+        }
+    }
+
+    // Geen (geverifieerd) account: teamlijst leeg, niets te herstellen.
+    function resetTeams() {
+
+        teamsGen++;
+
+        restorePending = false;
+
+        clearTimeout(restoreTimer);
+        restoreTimer = null;
+
+        teamsState = {
+            uid: null,
+            phase: "idle",
+            teams: [],
+            notice: null,
+            retryRestore: false
+        };
+
+        renderTeams();
+    }
+
+    function selectTeam(teamId) {
+
+        if (restorePending) {
+            return;
+        }
+
+        const user = auth.currentUser;
+
+        if (
+            !user || user.isAnonymous || !user.emailVerified ||
+            user.uid !== teamsState.uid
+        ) {
+            return;
+        }
+
+        const team = teamsState.teams.find(t => t.id === teamId);
+
+        if (!team || team.status !== "available") {
+            return;
+        }
+
+        try {
+
+            // Dezelfde functie als de ontwikkelaarsfunctie (zonder dev-waarschuwing).
+            setActiveContext({ mode: "team", teamId: team.id });
+
+        } catch (error) {
+
+            console.error("❌ Team kiezen mislukt:", error);
+
+            teamsState.notice = TEAM_NOTICES["temporary-error"];
+            renderTeams();
+            return;
+        }
+
+        writeActiveTeamPref(user.uid, team.id);
+
+        teamsState.notice = null;
+        teamsState.retryRestore = false;
+
+        renderTeams();
+        pollContextPhase();
+    }
+
+    // Volgt de fase van de actieve teamsync tot ready/denied/error.
+    // Een definitief "denied" wist de voorkeur; "error" nooit.
+    function pollContextPhase() {
+
+        if (phasePollTimer) {
+            clearInterval(phasePollTimer);
+        }
+
+        const uid = teamsState.uid;
+        const gen = contextGeneration;
+
+        let ticks = 0;
+
+        phasePollTimer = setInterval(() => {
+
+            ticks++;
+
+            const done =
+                contextPhase !== "loading" ||
+                gen !== contextGeneration ||
+                ticks > 75;
+
+            if (done) {
+
+                clearInterval(phasePollTimer);
+                phasePollTimer = null;
+
+                if (contextPhase === "denied" && gen === contextGeneration && uid) {
+                    clearActiveTeamPref(uid);
+                }
+            }
+
+            renderTeams();
+
+        }, 400);
+    }
+
+    function buildTeamRow(team) {
+
+        const isActive =
+            activeContext.mode === "team" && activeContext.teamId === team.id;
+
+        const row = document.createElement("div");
+
+        row.className =
+            "team-row" +
+            (isActive ? " active" : "") +
+            (team.status === "unavailable" ? " unavailable" : "");
+
+        row.setAttribute("data-team-id", team.id);
+
+        if (isActive) {
+            row.setAttribute("aria-current", "true");
+        }
+
+        const info = document.createElement("div");
+        info.className = "team-info";
+
+        const name = document.createElement("div");
+        name.className = "team-name";
+        name.textContent = teamLabel(team);
+        info.appendChild(name);
+
+        if (team.season) {
+            const season = document.createElement("div");
+            season.className = "small";
+            season.textContent = "Seizoen " + team.season;
+            info.appendChild(season);
+        }
+
+        row.appendChild(info);
+
+        const side = document.createElement("div");
+
+        if (isActive) {
+
+            side.className = "team-badge";
+
+            side.textContent =
+                contextPhase === "ready" ? "✓ Actief"
+                : contextPhase === "loading" ? "Laden…"
+                : contextPhase === "denied" ? "Geen toegang"
+                : "Fout bij laden";
+
+        } else if (team.status === "available") {
+
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "secondary";
+            button.textContent = "Kiezen";
+            button.disabled = restorePending || teamsState.phase === "loading";
+            button.addEventListener("click", () => selectTeam(team.id));
+            side.appendChild(button);
+
+        } else {
+
+            side.className = "small";
+
+            side.textContent =
+                team.status === "unavailable"
+                    ? "Niet beschikbaar"
+                    : "Kon niet laden";
+        }
+
+        row.appendChild(side);
+
+        return row;
+    }
+
+    function renderTeams() {
+
+        const user = auth.currentUser;
+
+        const verified = !!user && !user.isAnonymous && user.emailVerified;
+
+        authEl("teamsCard").style.display = verified ? "block" : "none";
+
+        syncHeader();
+
+        if (!verified) {
+
+            // Geen resten van het vorige account in de (verborgen) DOM laten staan.
+            authEl("teamsList").textContent = "";
+            authEl("teamsMessage").style.display = "none";
+            authEl("teamsEmpty").style.display = "none";
+
+            return;
+        }
+
+        const list = authEl("teamsList");
+        const empty = authEl("teamsEmpty");
+        const box = authEl("teamsMessage");
+        const refresh = authEl("teamsRefresh");
+
+        list.textContent = "";
+
+        const loading = teamsState.phase === "loading";
+
+        refresh.disabled = restorePending || loading;
+
+        refresh.textContent =
+            teamsState.retryRestore ? "Opnieuw proberen" : "Vernieuwen";
+
+        let notice = teamsState.notice;
+
+        if (!notice && activeContext.mode === "team") {
+
+            if (contextPhase === "denied") {
+                notice = { type: "error", text: "Geen toegang tot dit team of het bestaat niet meer." };
+            } else if (contextPhase === "error") {
+                notice = { type: "error", text: "Het team kon niet worden geladen. Kies 'Vernieuwen' om opnieuw te proberen." };
+            }
+        }
+
+        if (!notice && restorePending) {
+            notice = { type: "info", text: "Je team wordt geladen…" };
+        }
+
+        if (!notice && loading) {
+            notice = { type: "info", text: "Teams laden…" };
+        }
+
+        if (notice) {
+
+            box.className = "auth-message " + notice.type;
+            box.textContent = notice.text;
+            box.style.display = "block";
+
+        } else {
+
+            box.style.display = "none";
+        }
+
+        empty.style.display =
+            teamsState.phase === "ready" && teamsState.teams.length === 0
+                ? "block"
+                : "none";
+
+        teamsState.teams.forEach(team => list.appendChild(buildTeamRow(team)));
+    }
+
+    authEl("teamsRefresh").addEventListener("click", () => {
+
+        const user = auth.currentUser;
+
+        if (!user || user.isAnonymous || !user.emailVerified || restorePending) {
+            return;
+        }
+
+        // Actief team zonder geslaagde load: opnieuw proberen met hetzelfde team.
+        if (
+            activeContext.mode === "team" &&
+            contextPhase !== "ready" &&
+            contextPhase !== "loading"
+        ) {
+
+            try {
+                setActiveContext({ mode: "team", teamId: activeContext.teamId });
+                pollContextPhase();
+                renderTeams();
+            } catch (error) {
+                console.error("❌ Opnieuw proberen mislukt:", error);
+            }
+
+            return;
+        }
+
+        // Herstel na een tijdelijke fout: voorkeur opnieuw toepassen.
+        if (teamsState.retryRestore) {
+            onVerifiedAccount(user);
+            return;
+        }
+
+        refreshTeams(user);
+    });
+
+    // Alleen lezen (ontwikkelaars en tests).
+    window.jo9Firebase.getTeamsState = () => ({
+        uid: teamsState.uid,
+        phase: teamsState.phase,
+        teams: teamsState.teams.map(t => ({ ...t })),
+        restorePending: restorePending,
+        retryRestore: teamsState.retryRestore
+    });
+
+
+    // =========================================================
     // AUTH-STATUS (centraal)
     //
     // - Er is een gebruiker (anoniem of account): schermen
@@ -5163,6 +6045,14 @@ function watchPlayersFromFirebase(onCancel) {
     onAuthStateChanged(auth, user => {
 
         renderAuthUI(user);
+
+        // Mijn teams: eerst de teamvoorkeur bepalen (zet restorePending
+        // synchroon), zodat de legacy-sync hierop kan wachten.
+        if (!!user && !user.isAnonymous && user.emailVerified) {
+            onVerifiedAccount(user);
+        } else {
+            resetTeams();
+        }
 
         // Een teamcontext is alleen geldig voor het account dat hem
         // heeft geactiveerd. Anders expliciet terug naar legacy.
