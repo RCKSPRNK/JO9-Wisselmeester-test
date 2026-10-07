@@ -1768,6 +1768,33 @@ function validateNewTeamInput(input) {
 
     return { ok: Object.keys(errors).length === 0, values, errors };
 }
+
+// Het record dat de Rules verwachten: precies deze zes velden, de aanmaker
+// als enige owner. Geen players/matches: een nieuw team start leeg.
+function buildNewTeamRecord(uid, values, now) {
+
+    if (!isValidUid(uid)) {
+        throw new Error("Ongeldige uid.");
+    }
+
+    const members = {};
+    members[uid] = "owner";
+
+    return {
+        clubName: values.clubName,
+        teamName: values.teamName,
+        season: values.season,
+        createdAt: now,
+        createdBy: uid,
+        members: members
+    };
+}
+
+// denied    -> definitief: er is niets geschreven
+// transient -> onzeker (netwerk/time-out): het team kan al bestaan
+function classifyCreateError(error) {
+    return isPermissionDeniedError(error) ? "denied" : "transient";
+}
 // END TEAM PICKER LOGIC
 
 const lineupPositions = [
@@ -4278,6 +4305,8 @@ renderPlayers();
         ref,
         get,
         set,
+        update,
+        push,
         onValue
     } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-database.js";
 
@@ -5568,6 +5597,10 @@ function watchPlayersFromFirebase(onCancel) {
         retryRestore: false
     };
 
+    let creatingTeam = false;
+    let pendingCreate = null;   // { uid, teamId, values, record } na een onzekere aanmaak
+    let createGen = 0;
+
     // Header en clubnaam volgen het actieve team. Alleen weergave:
     // de rekenlogica leest APP_CONFIG niet.
     function applyTeamBranding(meta) {
@@ -5758,6 +5791,10 @@ function watchPlayersFromFirebase(onCancel) {
 
             const uid = user.uid;
 
+            if (teamsState.uid !== null && teamsState.uid !== uid) {
+                resetCreateState();
+            }
+
             const pref = readActiveTeamPref(uid);
 
             restorePending = !!pref;
@@ -5832,6 +5869,8 @@ function watchPlayersFromFirebase(onCancel) {
             notice: null,
             retryRestore: false
         };
+
+        resetCreateState();
 
         renderTeams();
     }
@@ -5970,7 +6009,7 @@ function watchPlayersFromFirebase(onCancel) {
             button.type = "button";
             button.className = "secondary";
             button.textContent = "Kiezen";
-            button.disabled = restorePending || teamsState.phase === "loading";
+            button.disabled = restorePending || creatingTeam || teamsState.phase === "loading";
             button.addEventListener("click", () => selectTeam(team.id));
             side.appendChild(button);
 
@@ -6029,6 +6068,220 @@ function watchPlayersFromFirebase(onCancel) {
         showCreateMessage("", "");
     }
 
+    // =========================================================
+    // NIEUW TEAM AANMAKEN (Fase 2C-2)
+    //
+    // - Eén atomische update: teams/{id} én users/{uid}/teams/{id}.
+    //   Alles of niets; er kan geen team zonder index achterblijven.
+    // - Het teamId komt van push().key en hangt niet van namen af.
+    // - Het team wordt pas geactiveerd NA write én readback
+    //   (via selectTeam, dezelfde route als "Kiezen").
+    // - Een nieuw team start leeg: geen spelers, geen wedstrijden.
+    // =========================================================
+
+    function resetCreateState() {
+
+        createGen++;
+        creatingTeam = false;
+        pendingCreate = null;
+
+        closeCreateForm();
+    }
+
+    async function writeNewTeam(user, pending) {
+
+        const updates = {};
+
+        updates["teams/" + pending.teamId] = pending.record;
+        updates["users/" + pending.uid + "/teams/" + pending.teamId] = true;
+
+        const run = () => withTimeout(update(ref(db), updates), 15000);
+
+        try {
+
+            await run();
+
+        } catch (error) {
+
+            if (!isPermissionDenied(error)) {
+                throw error;
+            }
+
+            // Een net bevestigd account: één keer een vers token proberen.
+            await user.getIdToken(true);
+            await run();
+        }
+    }
+
+    async function createTeam() {
+
+        if (creatingTeam || restorePending) {
+            return;
+        }
+
+        const user = auth.currentUser;
+
+        if (!user || user.isAnonymous || !user.emailVerified) {
+            showCreateMessage(
+                "error",
+                "Alleen met een bevestigd account kun je een team aanmaken."
+            );
+            return;
+        }
+
+        const checked = validateNewTeamInput({
+            clubName: authEl("teamCreateClub").value,
+            teamName: authEl("teamCreateName").value,
+            season: authEl("teamCreateSeason").value
+        });
+
+        if (!checked.ok) {
+            showCreateMessage("error", Object.values(checked.errors).join(" "));
+            return;
+        }
+
+        const uid = user.uid;
+        const token = ++createGen;
+
+        const stale = () =>
+            token !== createGen ||
+            !auth.currentUser ||
+            auth.currentUser.uid !== uid;
+
+        creatingTeam = true;
+
+        showCreateMessage("info", "Team wordt aangemaakt…");
+        renderTeams();
+
+        try {
+
+            // Zelfde invoer na een onzekere aanmaak: hetzelfde teamId hergebruiken.
+            let pending = pendingCreate;
+
+            const retry =
+                !!pending &&
+                pending.uid === uid &&
+                JSON.stringify(pending.values) === JSON.stringify(checked.values);
+
+            if (!retry) {
+
+                const newId = push(ref(db, "teams")).key;
+
+                if (!isValidTeamId(newId)) {
+                    throw new Error("Ongeldig teamId.");
+                }
+
+                pending = {
+                    uid: uid,
+                    teamId: newId,
+                    values: checked.values,
+                    record: buildNewTeamRecord(uid, checked.values, Date.now())
+                };
+
+                pendingCreate = pending;
+            }
+
+            // Bij een nieuwe poging eerst kijken of het team al bestaat.
+            let meta = retry ? await readTeamMeta(pending.teamId) : null;
+
+            if (stale()) {
+                return;
+            }
+
+            if (!meta || meta.status !== "available") {
+
+                await writeNewTeam(user, pending);
+
+                if (stale()) {
+                    return;
+                }
+
+                meta = await readTeamMeta(pending.teamId);
+
+                if (stale()) {
+                    return;
+                }
+            }
+
+            if (meta.status !== "available") {
+                throw new Error("Aangemaakt team kon niet worden teruggelezen.");
+            }
+
+            // Vanaf hier bestaat het team zeker; de aanmaak is klaar.
+            const teamId = pending.teamId;
+            const label = teamLabel(meta);
+
+            pendingCreate = null;
+
+            const listed = await refreshTeams(user);
+
+            if (stale()) {
+                return;
+            }
+
+            closeCreateForm();
+
+            if (
+                listed !== "ready" ||
+                !teamsState.teams.some(t => t.id === teamId && t.status === "available")
+            ) {
+                teamsState.notice = {
+                    type: "info",
+                    text: "Je team is aangemaakt, maar de lijst kon niet worden ververst. Kies 'Vernieuwen' om het te kiezen."
+                };
+                return;
+            }
+
+            selectTeam(teamId);
+
+            if (activeContext.mode !== "team" || activeContext.teamId !== teamId) {
+                teamsState.notice = {
+                    type: "info",
+                    text: "Je team is aangemaakt, maar kon niet worden geactiveerd. Kies het team in de lijst."
+                };
+                return;
+            }
+
+            teamsState.notice = {
+                type: "ok",
+                text: "Team '" + label + "' is aangemaakt en actief."
+            };
+
+        } catch (error) {
+
+            console.error("❌ Team aanmaken mislukt:", error);
+
+            if (!stale()) {
+
+                if (classifyCreateError(error) === "denied") {
+
+                    // Definitief: er is niets geschreven. Nieuwe poging = nieuw teamId.
+                    pendingCreate = null;
+
+                    showCreateMessage(
+                        "error",
+                        "Je hebt geen toestemming om een team aan te maken. Controleer of je e-mailadres bevestigd is en probeer het opnieuw."
+                    );
+
+                } else {
+
+                    showCreateMessage(
+                        "error",
+                        "Het team kon niet (volledig) worden aangemaakt. Controleer je verbinding en kies opnieuw 'Team aanmaken': dezelfde gegevens worden veilig hergebruikt."
+                    );
+                }
+            }
+
+        } finally {
+
+            if (token === createGen) {
+                creatingTeam = false;
+            }
+
+            renderTeams();
+        }
+    }
+
     function renderTeams() {
 
         const user = auth.currentUser;
@@ -6060,12 +6313,21 @@ function watchPlayersFromFirebase(onCancel) {
 
         const loading = teamsState.phase === "loading";
 
-        refresh.disabled = restorePending || loading;
+        refresh.disabled = restorePending || creatingTeam || loading;
 
-        authEl("teamsCreateToggle").disabled = restorePending || loading;
+        authEl("teamsCreateToggle").disabled = restorePending || creatingTeam || loading;
 
         refresh.textContent =
             teamsState.retryRestore ? "Opnieuw proberen" : "Vernieuwen";
+
+        authEl("teamCreateSubmit").disabled = creatingTeam;
+        authEl("teamCreateSubmit").textContent =
+            creatingTeam ? "Aanmaken…" : "Aanmaken";
+        authEl("teamCreateCancel").disabled = creatingTeam;
+
+        ["teamCreateClub", "teamCreateName", "teamCreateSeason"].forEach(id => {
+            authEl(id).disabled = creatingTeam;
+        });
 
         let notice = teamsState.notice;
 
@@ -6142,36 +6404,28 @@ function watchPlayersFromFirebase(onCancel) {
 
     authEl("teamsCreateToggle").addEventListener("click", () => {
 
-        if (restorePending || teamsState.phase === "loading") {
+        if (creatingTeam || restorePending || teamsState.phase === "loading") {
             return;
         }
 
         if (authEl("teamCreateForm").style.display === "none") {
             openCreateForm();
         } else {
+            pendingCreate = null;
             closeCreateForm();
         }
     });
 
     authEl("teamCreateForm").addEventListener("submit", event => {
         event.preventDefault();
-
-        // UI-only: valideer velden client-side; schrijf nog NIET naar Firebase.
-        const checked = validateNewTeamInput({
-            clubName: authEl("teamCreateClub").value,
-            teamName: authEl("teamCreateName").value,
-            season: authEl("teamCreateSeason").value
-        });
-
-        if (!checked.ok) {
-            showCreateMessage("error", Object.values(checked.errors).join(" "));
-            return;
-        }
-
-        showCreateMessage("info", "Team aanmaken is in een toekomstige stap beschikbaar.");
+        createTeam();
     });
 
     authEl("teamCreateCancel").addEventListener("click", () => {
+        if (creatingTeam) {
+            return;
+        }
+        pendingCreate = null;
         closeCreateForm();
     });
 
@@ -6181,7 +6435,9 @@ function watchPlayersFromFirebase(onCancel) {
         phase: teamsState.phase,
         teams: teamsState.teams.map(t => ({ ...t })),
         restorePending: restorePending,
-        retryRestore: teamsState.retryRestore
+        retryRestore: teamsState.retryRestore,
+        creating: creatingTeam,
+        pendingCreate: pendingCreate !== null
     });
 
 

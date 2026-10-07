@@ -1,5 +1,5 @@
 'use strict';
-// Tests voor "Mijn teams" (Fase 2C-1): zuivere logica uit index.html.
+// Tests voor "Mijn teams" (Fase 2C-1 + 2C-2): zuivere logica uit index.html.
 // Laadt de blokken CONTEXT HELPERS, CONTEXT STATE en TEAM PICKER LOGIC in een geisoleerde VM.
 // Geen browser, geen netwerk, geen Firebase.
 
@@ -217,10 +217,14 @@ describe('Schrijfpoort tijdens het herstellen van een voorkeur', () => {
 describe('Statische controles op index.html (2C-1)', () => {
   const ui = html.slice(html.indexOf('// MIJN TEAMS (Fase 2C-1)'), html.indexOf('// AUTH-STATUS (centraal)'));
   it('het UI-blok is gevonden', () => assert.ok(ui.length > 2000));
-  it('Mijn teams schrijft NIETS naar Firebase (alleen get)', () => {
-    assert.ok(!/\b(set|update|remove|push)\(\s*ref\(/.test(ui));
-    assert.ok(!/saveMatchesToFirebase|savePlayersToFirebase/.test(ui));
-    assert.ok(/get\(ref\(db, path\)\)/.test(ui) && /get\(ref\(db, "teams\/"/.test(ui));
+  it('Mijn teams schrijft alleen via createTeam: één atomische update, geen set/remove', () => {
+    const code = ui.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(!/\b(set|remove)\(\s*ref\(/.test(code));
+    assert.ok(!/saveMatchesToFirebase|savePlayersToFirebase/.test(code));
+    assert.strictEqual((code.match(/\bupdate\(/g) || []).length, 1);
+    assert.strictEqual((code.match(/\bpush\(/g) || []).length, 1);
+    assert.ok(/push\(ref\(db, "teams"\)\)\.key/.test(code));
+    assert.ok(/get\(ref\(db, "teams\/"/.test(ui));
   });
   it('alleen de drie metadata-velden worden gelezen (geen players/matches/members)', () => {
     assert.ok(/\["clubName", "teamName", "season"\]/.test(ui));
@@ -259,5 +263,107 @@ describe('Statische controles op index.html (2C-1)', () => {
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
     assert.strictEqual((outside.match(/jo9_active_team_/g) || []).length, 0);
+  });
+});
+
+describe('2C-2: buildNewTeamRecord (zuivere logica)', () => {
+  const ok3 = { clubName: 'TEST Club', teamName: 'JO9-1', season: '2026-2027' };
+
+  it('record: precies de zes velden; aanmaker is enige owner; geen legacy-data', () => {
+    ctx.v = ok3;
+    const r = JSON.parse(run('JSON.stringify(buildNewTeamRecord("uidA", v, 1700000000000))'));
+    assert.deepStrictEqual(Object.keys(r).sort(), ['clubName', 'createdAt', 'createdBy', 'members', 'season', 'teamName']);
+    assert.strictEqual(r.createdBy, 'uidA');
+    assert.strictEqual(r.createdAt, 1700000000000);
+    assert.deepStrictEqual(r.members, { uidA: 'owner' });
+    assert.ok(!('players' in r) && !('matches' in r));
+  });
+
+  it('record: ongeldige uid geeft een fout', () => {
+    ctx.v = ok3;
+    for (const bad of ['""', '"a/b"', '"../x"', 'null', 'undefined', '"x".repeat(129)', '42']) {
+      assert.throws(() => run('buildNewTeamRecord(' + bad + ', v, 1)'), /uid/, bad);
+    }
+  });
+});
+
+describe('2C-2: classifyCreateError (zuivere logica)', () => {
+  it('permission-denied is definitief; al het andere is onzeker', () => {
+    for (const e of ['{code:"PERMISSION_DENIED"}', '{code:"permission-denied"}']) {
+      assert.strictEqual(run('classifyCreateError(' + e + ')'), 'denied', e);
+    }
+    for (const e of ['new Error("offline")', '{code:"timeout"}', 'null', 'undefined', '"boom"', '{code:"ABORTED"}']) {
+      assert.strictEqual(run('classifyCreateError(' + e + ')'), 'transient', e);
+    }
+  });
+});
+
+describe('2C-2: statische controles op createTeam', () => {
+  const strip = s => s.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  const start = html.indexOf('async function createTeam()');
+  const end = html.indexOf('function renderTeams()');
+  const create = strip(html.slice(start, end));
+  const wstart = html.indexOf('async function writeNewTeam');
+  const write = strip(html.slice(wstart, start));
+
+  it('createTeam is gevonden', () => assert.ok(start > 0 && end > start && create.length > 500));
+  it('dubbele submit voorkomen: creatingTeam guard + createGen token', () => {
+    assert.ok(/if \(creatingTeam \|\| restorePending\)/.test(create));
+    assert.ok(/const token = \+\+createGen;/.test(create));
+    assert.ok(/if \(token === createGen\)/.test(create));
+  });
+  it('teamId van push().key, niet afhankelijk van namen', () => {
+    assert.ok(/push\(ref\(db, "teams"\)\)\.key/.test(create));
+    assert.ok(/isValidTeamId\(newId\)/.test(create));
+  });
+  it('één atomische update: teams/{id} + users/{uid}/teams/{id}', () => {
+    assert.strictEqual((write.match(/update\(ref\(db\), updates\)/g) || []).length, 1);
+    assert.ok(/updates\["teams\/" \+ pending\.teamId\] = pending\.record;/.test(write));
+    assert.ok(/updates\["users\/" \+ pending\.uid \+ "\/teams\/" \+ pending\.teamId\] = true;/.test(write));
+    assert.strictEqual((write.match(/updates\[/g) || []).length, 2);
+  });
+  it('geen legacy-data, geen spelers/matches kopiëren', () => {
+    const all = create + write;
+    assert.ok(!/savePlayersToFirebase|saveMatchesToFirebase/.test(all));
+    assert.ok(!/DEFAULT_PLAYERS/.test(all));
+  });
+  it('volgorde: check-exists → write → readback → lijst → selectTeam', () => {
+    const ir1 = create.indexOf('await readTeamMeta');
+    const iw = create.indexOf('await writeNewTeam');
+    const ir2 = create.indexOf('await readTeamMeta', iw);
+    const il = create.indexOf('await refreshTeams');
+    const iss = create.indexOf('selectTeam(teamId)');
+    assert.ok(ir1 > 0 && iw > ir1 && ir2 > iw && il > ir2 && iss > il);
+  });
+  it('stale-check na elke await', () => {
+    const awaits = (create.match(/\bawait\b/g) || []).length;
+    const checks = (create.match(/if \(stale\(\)\)/g) || []).length;
+    assert.strictEqual(awaits, 4);
+    assert.strictEqual(checks, awaits);
+  });
+  it('niet-definitieve fout: hergebruik pendingCreate', () => {
+    assert.ok(/pending\.uid === uid/.test(create));
+    assert.ok(/JSON\.stringify\(pending\.values\)/.test(create));
+  });
+  it('definitieve fout (denied): pendingCreate wordt gewist', () => {
+    assert.ok(/classifyCreateError\(error\) === "denied"/.test(create));
+  });
+  it('knoppen en velden uitgeschakeld tijdens aanmaak', () => {
+    assert.ok(/authEl\("teamCreateSubmit"\)\.disabled = creatingTeam/.test(html));
+    assert.ok(/teamsCreateToggle"\)\.disabled = restorePending \|\| creatingTeam/.test(html));
+    assert.ok(/refresh\.disabled = restorePending \|\| creatingTeam/.test(html));
+    assert.ok(/authEl\("teamCreateCancel"\)\.disabled = creatingTeam/.test(html));
+    assert.ok(/authEl\(id\)\.disabled = creatingTeam/.test(html));
+  });
+  it('resetCreateState bij uitloggen en accountwissel', () => {
+    assert.ok(/resetCreateState\(\);/.test(html));
+    assert.ok(/teamsState\.uid !== null && teamsState\.uid !== uid/.test(html));
+    assert.ok(/createGen\+\+;/.test(html));
+  });
+  it('HTML-elementen binnen teamsCard', () => {
+    const card = html.slice(html.indexOf('id="teamsCard"'), html.indexOf('1. Nieuwe wedstrijd'));
+    for (const id of ['teamsCreateToggle', 'teamCreateForm', 'teamCreateMessage', 'teamCreateClub', 'teamCreateName', 'teamCreateSeason', 'teamCreateSubmit', 'teamCreateCancel', 'teamsRefresh']) {
+      assert.ok(card.includes('id="' + id + '"'), id);
+    }
   });
 });
