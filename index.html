@@ -668,6 +668,10 @@ button:hover {
     font-size: 14px;
 }
 
+.team-create-form {
+    margin-top: 16px;
+}
+
 @media (max-width: 600px) {
 
     .minutes-table {
@@ -862,8 +866,35 @@ button:hover {
     </p>
 
     <div class="auth-actions">
+        <button type="button" class="secondary" id="teamsCreateToggle">Nieuw team aanmaken</button>
         <button type="button" class="secondary" id="teamsRefresh">Vernieuwen</button>
     </div>
+
+    <form class="auth-form team-create-form" id="teamCreateForm" style="display:none;" novalidate>
+
+        <h3>Nieuw team</h3>
+
+        <div id="teamCreateMessage" class="auth-message error" style="display:none;"></div>
+
+        <label>
+            Clubnaam
+            <input type="text" id="teamCreateClub" maxlength="60" autocomplete="off">
+        </label>
+
+        <label>
+            Teamnaam
+            <input type="text" id="teamCreateName" maxlength="60" autocomplete="off">
+        </label>
+
+        <label>
+            Seizoen
+            <input type="text" id="teamCreateSeason" maxlength="20" autocomplete="off">
+        </label>
+
+        <button type="submit" class="primary" id="teamCreateSubmit">Aanmaken</button>
+        <button type="button" class="auth-link" id="teamCreateCancel">Annuleren</button>
+
+    </form>
 
 </div>
 
@@ -1691,6 +1722,51 @@ function decideRestore(input) {
     }
 
     return { action: "legacy", teamId: null, clearPref: false, notice: "temporary-error", retry: true };
+}
+
+// ---------------------------------------------------------
+// Nieuw team aanmaken (Fase 2C-2): UI helpers (geen Firebase)
+// ---------------------------------------------------------
+
+// Zelfde grenzen als de Firebase Rules (clubName/teamName max 60, season max 20).
+const TEAM_FIELD_LIMITS = { clubName: 60, teamName: 60, season: 20 };
+
+// Voetbalseizoen: augustus t/m december = dit jaar-volgend jaar,
+// januari t/m juli = vorig jaar-dit jaar.
+function defaultSeason(date) {
+
+    const d = date || new Date();
+    const year = d.getFullYear();
+
+    return d.getMonth() >= 7
+        ? year + "-" + (year + 1)
+        : (year - 1) + "-" + year;
+}
+
+function validateNewTeamInput(input) {
+
+    const labels = { clubName: "Clubnaam", teamName: "Teamnaam", season: "Seizoen" };
+
+    const values = {};
+    const errors = {};
+
+    Object.keys(TEAM_FIELD_LIMITS).forEach(field => {
+
+        const raw = input && input[field];
+        const value = typeof raw === "string" ? raw.trim() : "";
+
+        values[field] = value;
+
+        if (!value) {
+            errors[field] = labels[field] + " is verplicht.";
+        } else if (value.length > TEAM_FIELD_LIMITS[field]) {
+            errors[field] =
+                labels[field] + " mag maximaal " +
+                TEAM_FIELD_LIMITS[field] + " tekens zijn.";
+        }
+    });
+
+    return { ok: Object.keys(errors).length === 0, values, errors };
 }
 // END TEAM PICKER LOGIC
 
@@ -5913,6 +5989,46 @@ function watchPlayersFromFirebase(onCancel) {
         return row;
     }
 
+    // ---------------------------------------------------------
+    // Nieuw team aanmaken (Fase 2C-2): UI (geen Firebase)
+    // ---------------------------------------------------------
+
+    function showCreateMessage(type, text) {
+
+        const box = authEl("teamCreateMessage");
+
+        if (!text) {
+            box.style.display = "none";
+            return;
+        }
+
+        box.className = "auth-message " + type;
+        box.textContent = text;
+        box.style.display = "block";
+    }
+
+    function openCreateForm() {
+
+        authEl("teamCreateForm").style.display = "block";
+
+        if (!authEl("teamCreateSeason").value) {
+            authEl("teamCreateSeason").value = defaultSeason();
+        }
+
+        authEl("teamCreateClub").focus();
+    }
+
+    function closeCreateForm() {
+
+        authEl("teamCreateForm").style.display = "none";
+
+        authEl("teamCreateClub").value = "";
+        authEl("teamCreateName").value = "";
+        authEl("teamCreateSeason").value = "";
+
+        showCreateMessage("", "");
+    }
+
     function renderTeams() {
 
         const user = auth.currentUser;
@@ -5930,6 +6046,8 @@ function watchPlayersFromFirebase(onCancel) {
             authEl("teamsMessage").style.display = "none";
             authEl("teamsEmpty").style.display = "none";
 
+            closeCreateForm();
+
             return;
         }
 
@@ -5943,6 +6061,8 @@ function watchPlayersFromFirebase(onCancel) {
         const loading = teamsState.phase === "loading";
 
         refresh.disabled = restorePending || loading;
+
+        authEl("teamsCreateToggle").disabled = restorePending || loading;
 
         refresh.textContent =
             teamsState.retryRestore ? "Opnieuw proberen" : "Vernieuwen";
@@ -6018,6 +6138,41 @@ function watchPlayersFromFirebase(onCancel) {
         }
 
         refreshTeams(user);
+    });
+
+    authEl("teamsCreateToggle").addEventListener("click", () => {
+
+        if (restorePending || teamsState.phase === "loading") {
+            return;
+        }
+
+        if (authEl("teamCreateForm").style.display === "none") {
+            openCreateForm();
+        } else {
+            closeCreateForm();
+        }
+    });
+
+    authEl("teamCreateForm").addEventListener("submit", event => {
+        event.preventDefault();
+
+        // UI-only: valideer velden client-side; schrijf nog NIET naar Firebase.
+        const checked = validateNewTeamInput({
+            clubName: authEl("teamCreateClub").value,
+            teamName: authEl("teamCreateName").value,
+            season: authEl("teamCreateSeason").value
+        });
+
+        if (!checked.ok) {
+            showCreateMessage("error", Object.values(checked.errors).join(" "));
+            return;
+        }
+
+        showCreateMessage("info", "Team aanmaken is in een toekomstige stap beschikbaar.");
+    });
+
+    authEl("teamCreateCancel").addEventListener("click", () => {
+        closeCreateForm();
     });
 
     // Alleen lezen (ontwikkelaars en tests).
