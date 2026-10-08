@@ -672,6 +672,44 @@ button:hover {
     margin-top: 16px;
 }
 
+/* Fase 2C-3: trainer uitnodigen */
+.invite-section {
+    margin-top: 20px;
+    padding-top: 14px;
+    border-top: 1px solid #dfe5ea;
+}
+.invite-section h3 {
+    margin: 0 0 6px;
+}
+.invite-section .small {
+    margin: 0 0 8px;
+}
+.invite-code-panel {
+    margin-top: 12px;
+    padding: 14px;
+    border: 1px dashed #dfe5ea;
+    border-radius: 12px;
+    background: #f8fafc;
+}
+.invite-code {
+    font-family: ui-monospace, "Courier New", monospace;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 6px;
+    text-align: center;
+    word-break: keep-all;
+}
+.invite-preview {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid #e3f4e6;
+    border-radius: 12px;
+    background: #f1f8f2;
+}
+.invite-preview h4 {
+    margin: 0 0 6px;
+}
+
 @media (max-width: 600px) {
 
     .minutes-table {
@@ -895,6 +933,66 @@ button:hover {
         <button type="button" class="auth-link" id="teamCreateCancel">Annuleren</button>
 
     </form>
+
+    <!-- Fase 2C-3: Trainer uitnodigen (alleen zichtbaar voor owner actief team) -->
+    <div id="inviteCreateSection" class="invite-section" style="display:none;">
+
+        <h3>Trainer uitnodigen</h3>
+
+        <p class="small">
+            Nodig een andere trainer uit voor dit team. Deel de onderstaande
+            uitnodigingscode met de trainer. De code kan één keer worden gebruikt
+            en verloopt automatisch (7 dagen).
+        </p>
+
+        <div id="inviteCreateMessage" class="auth-message" style="display:none;"></div>
+
+        <button type="button" class="secondary" id="inviteCreateToggle">Uitnodigingscode maken</button>
+
+        <div id="inviteCreatePanel" class="invite-code-panel" style="display:none;">
+            <div class="invite-code"><span id="inviteCreateCode"></span></div>
+            <p class="small">Geldig 7 dagen. Eén keer gebruiken.</p>
+            <button type="button" class="secondary" id="inviteCopyBtn">Code kopiëren</button>
+            <button type="button" class="auth-link" id="inviteCreateClose">Sluiten</button>
+        </div>
+
+    </div>
+
+    <!-- Fase 2C-3: Uitnodigingscode invoeren (alle geverifieerde gebruikers) -->
+    <div id="inviteEnterSection" class="invite-section" style="display:none;">
+
+        <h3>Ik heb een uitnodigingscode</h3>
+
+        <p class="small">
+            Heb je van een andere trainer een uitnodigingscode gekregen?
+            Vul deze hier in om toegang tot het team te krijgen.
+        </p>
+
+        <div id="inviteEnterMessage" class="auth-message" style="display:none;"></div>
+
+        <form class="auth-form" id="inviteEnterForm" novalidate>
+            <label>
+                Uitnodigingscode
+                <input type="text"
+                       id="inviteCodeInput"
+                       inputmode="text"
+                       maxlength="9"
+                       autocomplete="off"
+                       placeholder="K7P4-M2X9">
+            </label>
+            <button type="submit" class="primary" id="inviteCheckBtn">Code controleren</button>
+        </form>
+
+        <div id="invitePreview" class="invite-preview" style="display:none;">
+            <h4>Je bent uitgenodigd voor:</h4>
+            <p class="small"><span id="invitePreviewClub"></span></p>
+            <p class="small"><span id="invitePreviewTeam"></span></p>
+            <p class="small"><span id="invitePreviewSeason"></span></p>
+            <p class="small">Je krijgt toegang als trainer van dit team.</p>
+            <button type="button" class="primary" id="inviteAcceptBtn">Uitnodiging accepteren</button>
+        </div>
+
+    </div>
 
 </div>
 
@@ -4316,6 +4414,10 @@ renderPlayers();
         ReCaptchaEnterpriseProvider
     } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app-check.js";
 
+    import {
+        getFunctions,
+        httpsCallableFromURL
+    } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-functions.js";
 
   const firebaseConfig = {
   apiKey: "AIzaSyA3SnTli_9-RoRtdPsRQoF7VsivfSJDhak",
@@ -4607,6 +4709,26 @@ function watchPlayersFromFirebase(onCancel) {
     // FIREBASE BESCHIKBAAR MAKEN VOOR DE BESTAANDE APP
     // =========================================================
 
+    // =========================================================
+    // CLOUD FUNCTIONS (Fase 2C-3): "Trainer uitnodigen"
+    //
+    // Clientschrijf naar inviteCodes is per RTDB-rules onmogelijk
+    // (.read/.write = false); de client roept ALLEEN deze callables.
+    // De functies schrijven met Admin SDK (zie functions/index.js).
+    // Region: europe-west1 (past data-localiteit aan de RTDB). Als de
+    // deploy-region wijzigt, pas INVITE_FN_REGION aan of zet functions.region
+    // in firebase.json (zie rapport).
+    // =========================================================
+    const inviteFunctions = getFunctions(app);
+    const INVITE_FN_REGION = "europe-west1";
+    const INVITE_FN_BASE =
+        "https://" + INVITE_FN_REGION + "-" + firebaseConfig.projectId + ".cloudfunctions.net";
+    const inviteCall = {
+        createInviteCode: httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/createInviteCode"),
+        previewInvite:    httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/previewInvite"),
+        redeemInvite:     httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/redeemInvite")
+    };
+
     window.jo9Firebase = {
 
         app:
@@ -4617,6 +4739,15 @@ function watchPlayersFromFirebase(onCancel) {
 
         db:
             db,
+
+        createInviteCode:
+            inviteCall.createInviteCode,
+
+        previewInvite:
+            inviteCall.previewInvite,
+
+        redeemInvite:
+            inviteCall.redeemInvite,
 
         savePlayersToFirebase:
             savePlayersToFirebase,
@@ -5601,6 +5732,15 @@ function watchPlayersFromFirebase(onCancel) {
     let pendingCreate = null;   // { uid, teamId, values, record } na een onzekere aanmaak
     let createGen = 0;
 
+    // Fase 2C-3: state voor de trainer‑uitnodigen UI.
+    let inviteGen = 0;              // generation guard: voorkomt stale async / accountwissel
+    let inviteBusy = false;         // één invite-actie tegelijk (dubbele submit voorkomen)
+    let activeIsOwner = false;      // ingelogde gebruiker is owner van ACTIEF team
+    let ownerCheckTeamId = null;    // teamId waarvoor owner‑status laatst gecheckt is
+    let inviteCodeCreated = null;   // gegenereerde code (string) of null
+    let invitePreviewMeta = null;   // {teamId, clubName, teamName, season} of null
+    let invitePendingCode = null;   // genormaliseerde code voor redeem
+
     // Header en clubnaam volgen het actieve team. Alleen weergave:
     // de rekenlogica leest APP_CONFIG niet.
     function applyTeamBranding(meta) {
@@ -5871,11 +6011,21 @@ function watchPlayersFromFirebase(onCancel) {
         };
 
         resetCreateState();
+        resetInviteState();
 
         renderTeams();
     }
 
     function selectTeam(teamId) {
+
+        // Fase 2C-3: bij overstappen van team verwijder eventueel hangende
+        // invite-state (een preview van team A of een code voor het vorige
+        // team). De success-bevestiging blijft zichtbaar; panels worden gewist.
+        inviteCodeCreated = null;
+        invitePreviewMeta = null;
+        invitePendingCode = null;
+        renderInviteCreatePanel();
+        renderInvitePreview();
 
         if (restorePending) {
             return;
@@ -6365,6 +6515,10 @@ function watchPlayersFromFirebase(onCancel) {
                 : "none";
 
         teamsState.teams.forEach(team => list.appendChild(buildTeamRow(team)));
+
+        // Fase 2C-3: zichtbaarheid invite-ui bijwerken + owner-gating refreshen.
+        renderInviteSections();
+        refreshInviteOwnerStatus();
     }
 
     authEl("teamsRefresh").addEventListener("click", () => {
@@ -6509,6 +6663,372 @@ function watchPlayersFromFirebase(onCancel) {
         ensureSync();
 
     });
+
+    // =========================================================
+    // FASE 2C-3: TRAINER UITNODIGEN — UI + callable-koppeling
+    // Callables in functions/index.js: createInviteCode,
+    // previewInvite, redeemInvite. Clientschrijf naar inviteCodes
+    // is per Rules onmogelijk (.read/.write=false); alles loopt
+    // via deze callables die met Admin SDK schrijven.
+    // =========================================================
+    // BEGIN INVITE LOGIC
+
+    function resetInviteState() {
+        inviteGen++;
+        inviteBusy = false;
+        activeIsOwner = false;
+        ownerCheckTeamId = null;
+        inviteCodeCreated = null;
+        invitePreviewMeta = null;
+        invitePendingCode = null;
+        showInviteCreateMessage("", "");
+        showInviteEnterMessage("", "");
+        renderInviteCreatePanel();
+        renderInvitePreview();
+        renderInviteSections();
+    }
+
+    // ---- meldingsvakken (spiegelen showCreateMessage/showAuthMessage) ----
+    function showInviteCreateMessage(type, text) {
+        const box = authEl("inviteCreateMessage");
+        if (!text) { box.style.display = "none"; return; }
+        box.className = "auth-message " + type;
+        box.textContent = text;
+        box.style.display = "block";
+    }
+
+    function showInviteEnterMessage(type, text) {
+        const box = authEl("inviteEnterMessage");
+        if (!text) { box.style.display = "none"; return; }
+        box.className = "auth-message " + type;
+        box.textContent = text;
+        box.style.display = "block";
+    }
+
+    // ---- zichtbaarheid secties ----
+    function renderInviteSections() {
+        const user = auth.currentUser;
+        const verified =
+            !!user && !user.isAnonymous && !!user.emailVerified;
+
+        // "Ik heb een uitnodigingscode": zichtbaar voor alle geverifieerden.
+        authEl("inviteEnterSection").style.display = verified ? "block" : "none";
+
+        // "Trainer uitnodigen": alleen owner van het actieve team (UX; de
+        // echte beveiliging zit in createInviteCode server-side).
+        const showCreate =
+            verified
+            && activeContext.mode === "team"
+            && !!activeContext.teamId
+            && activeIsOwner;
+        authEl("inviteCreateSection").style.display = showCreate ? "block" : "none";
+    }
+
+    function renderInviteCreatePanel() {
+        const panel = authEl("inviteCreatePanel");
+        const btn = authEl("inviteCreateToggle");
+        if (inviteCodeCreated) {
+            panel.style.display = "block";
+            authEl("inviteCreateCode").textContent = inviteCodeCreated;
+            btn.style.display = "none";
+        } else {
+            panel.style.display = "none";
+            btn.style.display = "block";
+            btn.disabled = inviteBusy || !!restorePending || teamsState.phase === "loading";
+            btn.textContent = inviteBusy ? "Maken…" : "Uitnodigingscode maken";
+        }
+    }
+
+    function renderInvitePreview() {
+        const box = authEl("invitePreview");
+        if (invitePreviewMeta) {
+            authEl("invitePreviewClub").textContent = invitePreviewMeta.clubName || "";
+            authEl("invitePreviewTeam").textContent = invitePreviewMeta.teamName || "";
+            authEl("invitePreviewSeason").textContent = invitePreviewMeta.season || "";
+            authEl("inviteAcceptBtn").disabled = !!inviteBusy;
+            box.style.display = "block";
+        } else {
+            box.style.display = "none";
+            authEl("inviteAcceptBtn").disabled = !!inviteBusy;
+        }
+    }
+
+    // ---- client-side code-normalisatie (mirror server; UX-voorafcheck) ----
+    function normalizeInviteCodeClient(raw) {
+        if (raw == null) return "";
+        const s = String(raw).toUpperCase().replace(/[\s_-]+/g, "");
+        if (/^[A-Z2-9]{8}$/.test(s)) return s.slice(0, 4) + "-" + s.slice(4);
+        if (/^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(s)) return s;
+        return "";
+    }
+
+    function isValidInviteCodeClient(code) {
+        return typeof code === "string" && /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(code);
+    }
+
+    // ---- owner-gating (pure; UI-only, server blijft bron van waarheid) ----
+    function isInviteCreateAllowed(user, context, isOwner) {
+        return !!(
+            user && !user.isAnonymous && user.emailVerified
+            && context && context.mode === "team" && !!context.teamId
+            && isOwner
+        );
+    }
+
+    // ---- vertaling server-errors naar begrijpelijk Nederlands ----
+    function inviteErrorMessage(error) {
+        const code = error && error.code;
+        const map = {
+            "invalid-argument": "Deze uitnodigingscode is ongeldig.",
+            "not-found": "Deze uitnodigingscode bestaat niet meer.",
+            "failed-precondition": "Deze uitnodiging is verlopen of al gebruikt.",
+            "already-exists": "Je bent al lid van dit team.",
+            "permission-denied": "Je hebt geen toestemming voor deze actie.",
+            "unauthenticated": "Log opnieuw in om deze actie uit te voeren.",
+            "resource-exhausted": "Tijdelijk geen capaciteit. Probeer het over een minuut.",
+            "deadline-exceeded": "De aanvraag duurde te lang. Probeer het opnieuw.",
+            "unavailable": "De dienst is even niet beschikbaar. Probeer het opnieuw.",
+            "internal": "Er ging iets mis aan de server. Probeer het opnieuw."
+        };
+        return (code && map[code]) || "Er ging iets mis. Probeer het opnieuw.";
+    }
+
+    // ---- A: owner maakt een uitnodigingscode (callable createInviteCode) ----
+    async function doCreateInviteCode() {
+        const user = auth.currentUser;
+        if (!isInviteCreateAllowed(user, activeContext, activeIsOwner)) {
+            showInviteCreateMessage("error",
+                "Alleen de eigenaar van een team kan een trainer uitnodigen.");
+            return;
+        }
+        if (inviteBusy) {
+            return;
+        }
+        const token = ++inviteGen;
+        const teamId = activeContext.teamId;
+        const uid = user.uid;
+        const stale = () =>
+            inviteGen !== token
+            || auth.currentUser?.uid !== uid
+            || activeContext.mode !== "team"
+            || activeContext.teamId !== teamId;
+
+        inviteBusy = true;
+        showInviteCreateMessage("", "");
+        renderInviteCreatePanel();
+        try {
+            const res = await inviteCall.createInviteCode({ teamId: teamId });
+            if (stale()) { return; }
+            inviteCodeCreated = res.data.code;
+            renderInviteCreatePanel();
+        } catch (error) {
+            if (stale()) { return; }
+            showInviteCreateMessage("error", inviteErrorMessage(error));
+        } finally {
+            if (token === inviteGen) {
+                inviteBusy = false;
+                renderInviteCreatePanel();
+            }
+        }
+    }
+
+    function closeInviteCreatePanel() {
+        if (inviteBusy) {
+            return;
+        }
+        inviteCodeCreated = null;
+        showInviteCreateMessage("", "");
+        renderInviteCreatePanel();
+    }
+
+    function copyInviteCode() {
+        if (!inviteCodeCreated) {
+            return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard
+                .writeText(inviteCodeCreated)
+                .then(() => showInviteCreateMessage("ok", "Code gekopieerd naar klembord."))
+                .catch(() => fallbackCopyInvite(inviteCodeCreated));
+        } else {
+            fallbackCopyInvite(inviteCodeCreated);
+        }
+    }
+
+    function fallbackCopyInvite(text) {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try {
+            ok = document.execCommand("copy");
+        } catch (error) {
+            ok = false;
+        }
+        document.body.removeChild(ta);
+        if (ok) {
+            showInviteCreateMessage("ok", "Code gekopieerd naar klembord.");
+        } else {
+            // Fallback zonder crash: manuele selectie via prompt.
+            prompt("Kopieer deze code:", text);
+        }
+    }
+
+    // ---- B/C: ingelogde gebruiker controleert en accepteert een code ----
+    async function doCheckInvite(event) {
+        if (event) {
+            event.preventDefault();
+        }
+        if (inviteBusy) {
+            return;
+        }
+        const user = auth.currentUser;
+        if (!user || user.isAnonymous || !user.emailVerified) {
+            showInviteEnterMessage("error", "Log opnieuw in om een code in te voeren.");
+            return;
+        }
+        const raw = authEl("inviteCodeInput").value;
+        const normalized = normalizeInviteCodeClient(raw);
+        if (!isValidInviteCodeClient(normalized)) {
+            showInviteEnterMessage("error",
+                "Deze uitnodigingscode is ongeldig. Gebruik het formaat K7P4-M2X9.");
+            return;
+        }
+        const token = ++inviteGen;
+        const uid = user.uid;
+        const stale = () =>
+            inviteGen !== token || auth.currentUser?.uid !== uid;
+
+        inviteBusy = true;
+        showInviteEnterMessage("", "");
+        authEl("inviteCheckBtn").disabled = true;
+        authEl("inviteCheckBtn").textContent = "Controleren…";
+        try {
+            const res = await inviteCall.previewInvite({ code: normalized });
+            if (stale()) { return; }
+            invitePreviewMeta = res.data;            // {teamId, clubName, teamName, season}
+            invitePendingCode = normalized;           // genormaliseerde code voor redeem
+            authEl("inviteCodeInput").value = normalized;
+            renderInvitePreview();
+        } catch (error) {
+            if (stale()) { return; }
+            showInviteEnterMessage("error", inviteErrorMessage(error));
+        } finally {
+            if (token === inviteGen) {
+                inviteBusy = false;
+                authEl("inviteCheckBtn").disabled = false;
+                authEl("inviteCheckBtn").textContent = "Code controleren";
+                renderInvitePreview();
+            }
+        }
+    }
+
+    async function doRedeemInvite() {
+        if (inviteBusy) {
+            return;
+        }
+        const user = auth.currentUser;
+        if (!user || user.isAnonymous || !user.emailVerified) {
+            showInviteEnterMessage("error", "Log opnieuw in om de uitnodiging te accepteren.");
+            return;
+        }
+        if (!invitePendingCode || !invitePreviewMeta) {
+            return;
+        }
+        const code = invitePendingCode;
+        const teamId = invitePreviewMeta.teamId;
+        const uid = user.uid;
+        const token = ++inviteGen;
+        const stale = () => inviteGen !== token || auth.currentUser?.uid !== uid;
+
+        inviteBusy = true;
+        authEl("inviteAcceptBtn").disabled = true;
+        authEl("inviteAcceptBtn").textContent = "Accepteren…";
+        showInviteEnterMessage("", "");
+        try {
+            await inviteCall.redeemInvite({ code: code });
+            if (stale()) { return; }
+
+            // Succes: bevestiging tonen, invite-formulier wissen, teams
+            // verversen en het nieuwe team via de bestaande selectTeam-flow
+            // activeren. De code verbruikt de server (single-use).
+            showInviteEnterMessage("ok",
+                "Je bent toegevoegd als trainer. Het team wordt geladen…");
+            inviteCodeCreated = null;
+            invitePendingCode = null;
+            invitePreviewMeta = null;
+            renderInviteCreatePanel();
+            renderInvitePreview();
+            await refreshTeams(user);
+            if (stale()) { return; }
+            selectTeam(teamId);
+        } catch (error) {
+            if (stale()) { return; }
+            showInviteEnterMessage("error", inviteErrorMessage(error));
+        } finally {
+            if (token === inviteGen) {
+                inviteBusy = false;
+                authEl("inviteAcceptBtn").disabled = !invitePreviewMeta;
+                authEl("inviteAcceptBtn").textContent = "Uitnodiging accepteren";
+                renderInvitePreview();
+            }
+        }
+    }
+
+    // ---- owner-status van actief team (alleen eigen rol lezen) ----
+    async function refreshInviteOwnerStatus() {
+        const user = auth.currentUser;
+        if (!user || user.isAnonymous || !user.emailVerified
+            || activeContext.mode !== "team"
+            || !activeContext.teamId) {
+            if (activeIsOwner) {
+                activeIsOwner = false;
+                renderInviteSections();
+            }
+            ownerCheckTeamId = null;
+            return;
+        }
+        const teamId = activeContext.teamId;
+        // cache per team: renderTeams wordt vaak op nieuw aangeroepen (poll).
+        if (ownerCheckTeamId === teamId) {
+            return;
+        }
+        ownerCheckTeamId = teamId;
+
+        let isOwner = false;
+        try {
+            const snap = await withTimeout(
+                get(ref(db, "teams/" + teamId + "/members/" + user.uid)),
+                10000
+            );
+            if (activeContext.mode !== "team"
+                || activeContext.teamId !== teamId
+                || !auth.currentUser || auth.currentUser.uid !== user.uid) {
+                activeIsOwner = false;
+                return;
+            }
+            isOwner = snap.exists() && snap.val() === "owner";
+        } catch (error) {
+            isOwner = false; // fail closed: ketting onduidelijk -> knop verbergen
+        }
+        activeIsOwner = isOwner;
+        renderInviteSections();
+    }
+
+    // END INVITE LOGIC
+
+    // Event-bindungen (DOM; buiten de vm-testbare INVITE LOGIC-markeringen).
+    authEl("inviteCreateToggle").addEventListener("click", doCreateInviteCode);
+    authEl("inviteCopyBtn").addEventListener("click", copyInviteCode);
+    authEl("inviteCreateClose").addEventListener("click", closeInviteCreatePanel);
+    authEl("inviteEnterForm").addEventListener("submit", (event) => {
+        event.preventDefault();
+        doCheckInvite();
+    });
+    authEl("inviteAcceptBtn").addEventListener("click", doRedeemInvite);
 
 </script>
 <div id="lineupModal" class="lineup-modal" style="display:none;">

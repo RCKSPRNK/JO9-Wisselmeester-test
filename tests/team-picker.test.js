@@ -35,6 +35,7 @@ before(() => {
   vm.runInContext(block('CONTEXT HELPERS'), ctx);
   vm.runInContext(block('CONTEXT STATE'), ctx);
   vm.runInContext(block('TEAM PICKER LOGIC'), ctx);
+  vm.runInContext(block('INVITE LOGIC'), ctx);
   ctx.mkStorage = mkStorage;
 });
 
@@ -365,5 +366,97 @@ describe('2C-2: statische controles op createTeam', () => {
     for (const id of ['teamsCreateToggle', 'teamCreateForm', 'teamCreateMessage', 'teamCreateClub', 'teamCreateName', 'teamCreateSeason', 'teamCreateSubmit', 'teamCreateCancel', 'teamsRefresh']) {
       assert.ok(card.includes('id="' + id + '"'), id);
     }
+  });
+});
+
+describe('Fase 2C-3: trainer uitnodigen', () => {
+
+  describe('invite helpers (pure, in vm)', () => {
+    it('normalizeInviteCodeClient: trim/hoofdletters/dash + zonder streepje', () => {
+      assert.strictEqual(run('normalizeInviteCodeClient(" k7p4 m2x9 ")'), 'K7P4-M2X9');
+      assert.strictEqual(run('normalizeInviteCodeClient("k7p4-m2x9")'), 'K7P4-M2X9');
+      assert.strictEqual(run('normalizeInviteCodeClient("K7P4M2X9")'), 'K7P4-M2X9');
+      assert.strictEqual(run('normalizeInviteCodeClient("k7p4 m2x9 extra")'), '');
+      assert.strictEqual(run('normalizeInviteCodeClient("!!!")'), '');
+    });
+
+    it('isValidInviteCodeClient: formaat XXXX-XXXX, geen ambigue cijfers', () => {
+      assert.strictEqual(run('isValidInviteCodeClient("K7P4-M2X9")'), true);
+      assert.strictEqual(run('isValidInviteCodeClient("0000-0000")'), false);  // 0/1 altijd afwezig
+      assert.strictEqual(run('isValidInviteCodeClient("O0I1-O0I1")'), false);
+      assert.strictEqual(run('isValidInviteCodeClient("")'), false);
+      assert.strictEqual(run('isValidInviteCodeClient("K7P4-M2X9-X")'), false); // te lang
+    });
+
+    it('inviteErrorMessage: vertaalt bekende codes, geen technische codes', () => {
+      assert.ok(run('inviteErrorMessage({code:"invalid-argument"})').includes('ongeldig'));
+      assert.ok(run('inviteErrorMessage({code:"not-found"})').includes('niet meer'));
+      assert.ok(run('inviteErrorMessage({code:"failed-precondition"})').includes('verlopen'));
+      assert.ok(run('inviteErrorMessage({code:"already-exists"})').includes('al lid'));
+      assert.ok(run('inviteErrorMessage({code:"permission-denied"})').includes('toestemming'));
+      assert.ok(run('inviteErrorMessage({code:"unauthenticated"})').includes('Log opnieuw'));
+      assert.ok(run('inviteErrorMessage(null)').includes('mis'));                      // algemene fallback
+      assert.ok(!run('inviteErrorMessage({code:"invalid-argument"})').includes('invalid-argument'));
+    });
+
+    it('owner-gating: isInviteCreateAllowed', () => {
+      ctx.u = { uid: 'u', isAnonymous: false, emailVerified: true };
+      ctx.t = { mode: 'team', teamId: 't1' };
+      ctx.legacy = { mode: 'legacy', teamId: null };
+      assert.strictEqual(run('isInviteCreateAllowed(u, t, true)'), true);
+      assert.strictEqual(run('isInviteCreateAllowed(u, t, false)'), false);          // geen owner
+      assert.strictEqual(run('isInviteCreateAllowed(u, legacy, true)'), false);     // legacy
+      assert.strictEqual(run('isInviteCreateAllowed(null, t, true)'), false);       // geen user
+      assert.strictEqual(run('isInviteCreateAllowed({isAnonymous:true,emailVerified:true}, t, true)'), false);    // anon
+      assert.strictEqual(run('isInviteCreateAllowed({isAnonymous:false,emailVerified:false}, t, true)'), false); // onbevestigd
+    });
+  });
+
+  describe('invite UI + security (statisch)', () => {
+    const inviteUi = html.slice(html.indexOf('// BEGIN INVITE LOGIC'), html.indexOf('// END INVITE LOGIC'));
+    const card = html.slice(html.indexOf('id="teamsCard"'), html.indexOf('1. Nieuwe wedstrijd'));
+
+    it('alle invite-UI-elementen aanwezig in teamsCard', () => {
+      const ids = ['inviteCreateSection','inviteCreateMessage','inviteCreateToggle',
+                   'inviteCreatePanel','inviteCreateCode','inviteCopyBtn','inviteCreateClose',
+                   'inviteEnterSection','inviteEnterMessage','inviteEnterForm','inviteCodeInput',
+                   'inviteCheckBtn','invitePreview','invitePreviewClub','invitePreviewTeam',
+                   'invitePreviewSeason','inviteAcceptBtn'];
+      for (const id of ids) {
+        assert.ok(card.includes('id="' + id + '"'), id);
+      }
+    });
+
+    it('koppelt aan de drie callable functions; geen directe RTDB clietwrites', () => {
+      assert.ok(/inviteCall\.createInviteCode/.test(html));
+      assert.ok(/inviteCall\.previewInvite/.test(html));
+      assert.ok(/inviteCall\.redeemInvite/.test(html));
+      // geen set/remove/update en geen inviteCodes/client-lees in de invite-logica:
+      assert.ok(!/set\(ref\(db/.test(inviteUi));
+      assert.ok(!/update\(ref\(db/.test(inviteUi));
+      assert.ok(!/remove\(ref\(db/.test(inviteUi));
+      assert.ok(!/ref\(db, "inviteCodes/.test(inviteUi));
+    });
+
+    it('owner-gating: UI leest ALLEEN de eigen rol teams/{teamId}/members/{uid}', () => {
+      assert.ok(/ref\(db, "teams\/" \+ teamId \+ "\/members\/" \+ user\.uid\)/.test(inviteUi));
+      assert.ok(/=== "owner"/.test(inviteUi));
+      assert.ok(/activeIsOwner/.test(inviteUi));
+    });
+
+    it('redeem verwerkt via refreshTeams + selectTeam (bestaande flow ongewijzigd)', () => {
+      assert.ok(/await refreshTeams\(user\)/.test(inviteUi));
+      assert.ok(/selectTeam\(teamId\)/.test(inviteUi));
+    });
+
+    it('resetInviteState bij logout/accountwissel (invite-state gewist)', () => {
+      assert.ok(/resetInviteState\(\);/.test(html));
+      assert.ok(/inviteGen\+\+;/.test(html));
+    });
+
+    it('bestaande team-contextflow blijft aanwezig (setActiveContext/selectTeam)', () => {
+      assert.ok(/setActiveContext\(/.test(html));
+      assert.ok(/function selectTeam\(teamId\)/.test(html));
+    });
   });
 });
