@@ -22,6 +22,10 @@ before(() => {
   ctx = vm.createContext({ console: { warn() {}, info() {}, log() {}, error() {} }, alert(msg) { alerts.push(String(msg)); } });
   vm.runInContext(m[1], ctx);
   vm.runInContext(s[1], ctx);
+  // Fase A: default is IDLE_CONTEXT. Legacy-code en -tests blijven geldig;
+  // zet de VM-baseline expliciet naar LEGACY_CONTEXT. De idle-tests zetten
+  // zelf (IDLE_CONTEXT).
+  run('activeContext = LEGACY_CONTEXT');
 });
 
 describe('LEGACY-context (standaard)', () => {
@@ -193,5 +197,76 @@ describe('Fase 2B: statische controles op index.html', () => {
   it('legacy-matchnummering gebruikt nog steeds jo9_match_counter; team gebruikt max+1', () => {
     assert.ok(/activeContext\.mode === "legacy"\) \{\s*matchNumber =\s*Number\(\s*localStorage\.getItem\(storageKey\("match_counter"\)\)/.test(html));
     assert.ok(/Math\.max\(max, Number\(m && m\.matchNumber\) \|\| 0\)/.test(html));
+  });
+});
+
+describe('Idle-context (Fase A): geen legacy, geen write, geen sync', () => {
+  // Laadt ALLEEN runInitialSync (via marker) + de al gemoduleerde helpers.
+  // runLegacySync/runTeamSync worden hier ALLES stubs — een idle-context mag
+  // ze nooit aanroepen. Dit is een DIREKE aanroep van runInitialSync().
+  const setIdle = () => run('activeContext = IDLE_CONTEXT; syncReady = true; restorePending = false');
+  const restore = () => run('activeContext = LEGACY_CONTEXT; syncReady = false; restorePending = false');
+
+  before(() => {
+    // runInitialSync staat in een SYNCHRONISATIE-blok; laad het in de VM.
+    // runLegacySync/runTeamSync blijven undefined (worden stubs per test).
+    const m = html.match(new RegExp('// BEGIN RUN INITIAL SYNC([\\s\\S]*?)// END RUN INITIAL SYNC'));
+    assert.ok(m, 'RUN INITIAL SYNC-blok niet gevonden in index.html');
+    vm.runInContext(m[1], ctx);
+  });
+
+  it('normalizeContext({mode:"idle"}) -> IDLE_CONTEXT (hergebruik)', () => {
+    assert.strictEqual(run('normalizeContext({mode:"idle"}) === IDLE_CONTEXT'), true);
+    assert.strictEqual(run('normalizeContext({mode:"idle", teamId:null}) === IDLE_CONTEXT'), true);
+  });
+
+  it('canWrite() is false in idle (ook met syncReady=true)', () => {
+    setIdle();
+    try { assert.strictEqual(run('canWrite()'), false); }
+    finally { restore(); }
+  });
+
+  it('assertWritable in idle: false + melding', () => {
+    alerts.length = 0;
+    setIdle();
+    try {
+      assert.strictEqual(run('assertWritable("test")'), false);
+      assert.strictEqual(alerts.length, 1);
+    } finally { restore(); }
+  });
+
+  it('dataPath/storageKey werpen voor idle (safe-net checkContext)', () => {
+    setIdle();
+    try {
+      assert.throws(() => run('dataPath("players")'), /Ongeldige context/);
+      assert.throws(() => run('dataPath("players", IDLE_CONTEXT)'), /Ongeldige context/);
+      assert.throws(() => run('storageKey("matches")'), /Ongeldige context/);
+    } finally { restore(); }
+  });
+
+  it('statisch: runLegacySync heeft precies 1 call-site (def + legacy-tak)', () => {
+    // runLegacySync( wordt aangeroepen in de legacy-tak van runInitialSync
+    // EN is dat de enige call-site; idle bereikt het niet.
+    assert.strictEqual((html.match(/runLegacySync\(/g) || []).length, 2);
+  });
+
+  it('statisch: runInitialSync heeft een idle-guard (return "blocked") VOOR de legacy-tak', () => {
+    assert.ok(
+      /async function runInitialSync([\s\S]*?)activeContext\.mode === "idle"([\s\S]*?)return "blocked"([\s\S]*?)activeContext\.mode === "legacy"\s*\)\s*\{\s*return runLegacySync/.test(html),
+      'idle-guard moet voor de legacy-call staan'
+    );
+  });
+
+  it('GEDRAG: directe aanroep runInitialSync() in idle roept runLegacySync/runTeamSync NIET aan', async () => {
+    run('activeContext = IDLE_CONTEXT');
+    const spies = { legacy: 0, team: 0 };
+    ctx.runLegacySync = () => { spies.legacy++; };
+    ctx.runTeamSync = () => { spies.team++; };
+    const result = await run('runInitialSync(1)');
+    assert.strictEqual(result, 'blocked');
+    assert.strictEqual(spies.legacy, 0, 'runLegacySync mag niet worden aangeroepen');
+    assert.strictEqual(spies.team, 0, 'runTeamSync mag niet worden aangeroepen');
+    delete ctx.runLegacySync; delete ctx.runTeamSync;
+    restore();
   });
 });

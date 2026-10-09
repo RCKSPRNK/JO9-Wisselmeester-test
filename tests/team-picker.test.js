@@ -36,6 +36,8 @@ before(() => {
   vm.runInContext(block('CONTEXT STATE'), ctx);
   vm.runInContext(block('TEAM PICKER LOGIC'), ctx);
   vm.runInContext(block('INVITE LOGIC'), ctx);
+  // Fase A: CONTEXT HELPERS default is IDLE; legacy‑asserties verwachten legacy.
+  run('activeContext = LEGACY_CONTEXT');
   ctx.mkStorage = mkStorage;
 });
 
@@ -157,27 +159,27 @@ describe('decideRestore: G1 (optie B)', () => {
   const d = (pref, listOk, teams) => { ctx.inp = { pref, listOk, teams }; return JSON.parse(run('JSON.stringify(decideRestore(inp))')); };
   const T = (id, status) => ({ id, status });
 
-  it('geen voorkeur: legacy, niets wissen, geen melding', () => {
-    assert.deepStrictEqual(d(null, true, []), { action: 'legacy', teamId: null, clearPref: false, notice: null, retry: false });
+  it('geen voorkeur: idle, niets wissen, geen melding', () => {
+    assert.deepStrictEqual(d(null, true, []), { action: 'idle', teamId: null, clearPref: false, notice: null, retry: false });
   });
   it('voorkeur + beschikbaar team: teamsync', () => {
     assert.deepStrictEqual(d('teamA', true, [T('teamA', 'available'), T('teamB', 'available')]), { action: 'team', teamId: 'teamA', clearPref: false, notice: null, retry: false });
   });
-  it('voorkeur niet (meer) in de lijst: wissen + legacy + melding', () => {
-    assert.deepStrictEqual(d('teamZ', true, [T('teamA', 'available')]), { action: 'legacy', teamId: null, clearPref: true, notice: 'team-not-in-list', retry: false });
-    assert.deepStrictEqual(d('teamZ', true, []), { action: 'legacy', teamId: null, clearPref: true, notice: 'team-not-in-list', retry: false });
+  it('voorkeur niet (meer) in de lijst: wissen + idle + melding', () => {
+    assert.deepStrictEqual(d('teamZ', true, [T('teamA', 'available')]), { action: 'idle', teamId: null, clearPref: true, notice: 'team-not-in-list', retry: false });
+    assert.deepStrictEqual(d('teamZ', true, []), { action: 'idle', teamId: null, clearPref: true, notice: 'team-not-in-list', retry: false });
   });
-  it('voorkeur in de lijst maar niet beschikbaar (geen lid / team weg): wissen + legacy', () => {
-    assert.deepStrictEqual(d('teamA', true, [T('teamA', 'unavailable')]), { action: 'legacy', teamId: null, clearPref: true, notice: 'team-unavailable', retry: false });
+  it('voorkeur in de lijst maar niet beschikbaar (geen lid / team weg): wissen + idle', () => {
+    assert.deepStrictEqual(d('teamA', true, [T('teamA', 'unavailable')]), { action: 'idle', teamId: null, clearPref: true, notice: 'team-unavailable', retry: false });
   });
-  it('tijdelijke fout bij de lijst: voorkeur BEHOUDEN, tijdelijk legacy, opnieuw proberen', () => {
-    assert.deepStrictEqual(d('teamA', false, []), { action: 'legacy', teamId: null, clearPref: false, notice: 'temporary-error', retry: true });
+  it('tijdelijke fout bij de lijst: voorkeur BEHOUDEN, tijdelijk idle, opnieuw proberen', () => {
+    assert.deepStrictEqual(d('teamA', false, []), { action: 'idle', teamId: null, clearPref: false, notice: 'temporary-error', retry: true });
   });
   it('tijdelijke fout bij de metadata van het team: voorkeur BEHOUDEN, opnieuw proberen', () => {
-    assert.deepStrictEqual(d('teamA', true, [T('teamA', 'error')]), { action: 'legacy', teamId: null, clearPref: false, notice: 'temporary-error', retry: true });
+    assert.deepStrictEqual(d('teamA', true, [T('teamA', 'error')]), { action: 'idle', teamId: null, clearPref: false, notice: 'temporary-error', retry: true });
   });
-  it('ongeldige voorkeur: legacy en wissen', () => {
-    for (const bad of ['../x', 'a/b']) assert.deepStrictEqual(d(bad, true, [T('teamA', 'available')]), { action: 'legacy', teamId: null, clearPref: true, notice: null, retry: false });
+  it('ongeldige voorkeur: idle en wissen', () => {
+    for (const bad of ['../x', 'a/b']) assert.deepStrictEqual(d(bad, true, [T('teamA', 'available')]), { action: 'idle', teamId: null, clearPref: true, notice: null, retry: false });
   });
   it('INVARIANT: bij een tijdelijke fout wordt de voorkeur nooit gewist; bij action team ook niet', () => {
     const statuses = ['available', 'unavailable', 'error', null];
@@ -245,8 +247,13 @@ describe('Statische controles op index.html (2C-1)', () => {
   it('legacy-sync wacht op restorePending (ensureSync) en de handler bepaalt de voorkeur eerst', () => {
     assert.ok(/if \(restorePending && activeContext\.mode === "legacy"\) \{\s*return;\s*\}/.test(html));
     const h = html.slice(html.indexOf('onAuthStateChanged(auth, user => {'));
-    assert.ok(h.indexOf('onVerifiedAccount(user)') > -1 && h.indexOf('onVerifiedAccount(user)') < h.indexOf('setActiveContext(LEGACY_CONTEXT)'));
+    assert.ok(h.indexOf('onVerifiedAccount(user)') > -1 && h.indexOf('onVerifiedAccount(user)') < h.indexOf('setActiveContext(IDLE_CONTEXT)'));
     assert.ok(h.indexOf('onVerifiedAccount(user)') < h.lastIndexOf('ensureSync();'));
+  });
+  it('logout / account-switch: fallback is idle, nooit legacy', () => {
+    const h2 = html.slice(html.indexOf('onAuthStateChanged(auth, user => {'));
+    assert.ok(h2.indexOf('setActiveContext(IDLE_CONTEXT)') > -1, 'idle-fallback aanwezig');
+    assert.strictEqual(h2.indexOf('setActiveContext(LEGACY_CONTEXT)'), -1, 'geen legacy-fallback in auth-handler');
   });
   it('de voorkeur wordt alleen gewist bij een definitieve uitkomst (denied of decideRestore)', () => {
     const clears = ui.match(/clearActiveTeamPref\(/g) || [];

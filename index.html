@@ -1357,8 +1357,16 @@ er wordt een fout gegooid.
 */
 
 const LEGACY_CONTEXT = { mode: "legacy", teamId: null };
+// Fase A: een aparte idle-context is veiliger dan activeContext=null,
+// want alle helpers (checkContext/dataPath/storageKey/ensureSync/...)
+// gaan ervan uit dat activeContext een object met .mode is. null zou
+// bij elk .mode‑access een TypeError veroorzaken. IDLE_CONTEXT heeft
+// mode "idle": checkContext gooit (safe‑net), normalizeContext returned
+// ongewijzigd, canWrite() -> false en runInitialSync/ensureSync noemen
+// geen legacy‑sync en geen legacy‑read/write.
+const IDLE_CONTEXT = { mode: "idle", teamId: null };
 
-let activeContext = LEGACY_CONTEXT;
+let activeContext = IDLE_CONTEXT;
 
 function isValidTeamId(id) {
     return typeof id === "string" &&
@@ -1444,6 +1452,10 @@ function normalizeContext(context) {
         throw new Error("Ongeldige context.");
     }
 
+    if (context.mode === "idle") {
+        return IDLE_CONTEXT;
+    }
+
     if (context.mode === "legacy") {
         return LEGACY_CONTEXT;
     }
@@ -1461,6 +1473,10 @@ function normalizeContext(context) {
 }
 
 function canWrite() {
+
+    if (activeContext.mode === "idle") {
+        return false;
+    }
 
     if (activeContext.mode === "legacy") {
         return restorePending !== true;
@@ -1562,7 +1578,9 @@ function setActiveContext(context) {
     contextGeneration++;
     syncReady = false;
     activeContext = next;
-    contextPhase = next.mode === "legacy" ? "ready" : "loading";
+    contextPhase = next.mode === "legacy"
+        ? "ready"
+        : next.mode === "team" ? "loading" : "idle";
     contextUid = next.mode === "team" ? currentAuthUid() : null;
 
     // C: luisteraars van de vorige context stoppen
@@ -1585,12 +1603,16 @@ function setActiveContext(context) {
 
     document.body.setAttribute(
         "data-context",
-        next.mode === "legacy" ? "legacy" : "team:" + next.teamId
+        next.mode === "legacy"
+            ? "legacy"
+            : next.mode === "team" ? "team:" + next.teamId : "idle"
     );
 
     console.info(
         "ℹ️ Actieve context: " +
-        (next.mode === "legacy" ? "LEGACY" : "team " + next.teamId)
+        (next.mode === "legacy"
+            ? "LEGACY"
+            : next.mode === "team" ? "team " + next.teamId : "idle")
     );
 
     // E/F/G: nieuwe context laden en pas daarna luisteraars starten
@@ -1794,21 +1816,21 @@ function decideRestore(input) {
     const pref = input && input.pref;
 
     if (!pref) {
-        return { action: "legacy", teamId: null, clearPref: false, notice: null, retry: false };
+        return { action: "idle", teamId: null, clearPref: false, notice: null, retry: false };
     }
 
     if (!isValidTeamId(pref)) {
-        return { action: "legacy", teamId: null, clearPref: true, notice: null, retry: false };
+        return { action: "idle", teamId: null, clearPref: true, notice: null, retry: false };
     }
 
     if (!input.listOk) {
-        return { action: "legacy", teamId: null, clearPref: false, notice: "temporary-error", retry: true };
+        return { action: "idle", teamId: null, clearPref: false, notice: "temporary-error", retry: true };
     }
 
     const team = (input.teams || []).find(t => t && t.id === pref);
 
     if (!team) {
-        return { action: "legacy", teamId: null, clearPref: true, notice: "team-not-in-list", retry: false };
+        return { action: "idle", teamId: null, clearPref: true, notice: "team-not-in-list", retry: false };
     }
 
     if (team.status === "available") {
@@ -1816,10 +1838,10 @@ function decideRestore(input) {
     }
 
     if (team.status === "unavailable") {
-        return { action: "legacy", teamId: null, clearPref: true, notice: "team-unavailable", retry: false };
+        return { action: "idle", teamId: null, clearPref: true, notice: "team-unavailable", retry: false };
     }
 
-    return { action: "legacy", teamId: null, clearPref: false, notice: "temporary-error", retry: true };
+    return { action: "idle", teamId: null, clearPref: false, notice: "temporary-error", retry: true };
 }
 
 // ---------------------------------------------------------
@@ -5077,7 +5099,12 @@ function watchPlayersFromFirebase(onCancel) {
     }
 
 
+    // BEGIN RUN INITIAL SYNC
     async function runInitialSync(gen) {
+
+        if (activeContext.mode === "idle") {
+            return "blocked";
+        }
 
         if (activeContext.mode === "legacy") {
             return runLegacySync(gen);
@@ -5085,6 +5112,7 @@ function watchPlayersFromFirebase(onCancel) {
 
         return runTeamSync(gen, activeContext, contextGeneration);
     }
+    // END RUN INITIAL SYNC
 
 
     // =========================================================
@@ -5106,6 +5134,14 @@ function watchPlayersFromFirebase(onCancel) {
     async function ensureSync() {
 
         if (!auth.currentUser || syncState !== "idle") {
+            return;
+        }
+
+        // Fase A: zonder actief team (idle) geen enkele sync — geen
+        // legacy-reads/writes, geen team/{tid}-reads. Een herstart of
+        // teamsRefresh (UI) triggert een her‑decideRestore; retry blijft
+        // via retryRestore en de opgeslagen teamvoorkeur behouden.
+        if (activeContext.mode === "idle") {
             return;
         }
 
@@ -5900,7 +5936,7 @@ function watchPlayersFromFirebase(onCancel) {
                 console.error("❌ Team herstellen mislukt:", error);
 
                 decision = {
-                    action: "legacy",
+                    action: "idle",
                     clearPref: false,
                     notice: "temporary-error",
                     retry: true
@@ -5913,12 +5949,15 @@ function watchPlayersFromFirebase(onCancel) {
         if (decision.clearPref) {
             clearActiveTeamPref(uid);
         }
-
+        // Beslissing is idle (geen actief team): expliciet idle-context.
+        // Garandeert geen legacy-sync, geen legacy read/write en geen
+        // teams/{tid}-reads; opgeslagen teamvoorkeur blijft bewaard en
+        // retryRestore (hierboven) houdt de "Opnieuw proberen"-knop actief.
+        setActiveContext(IDLE_CONTEXT);
         teamsState.notice = decision.notice ? TEAM_NOTICES[decision.notice] : null;
-
         renderTeams();
-
-        // Pas nu start de legacy-sync (ensureSync wachtte op restorePending).
+        // ensureSync start sync alleen in teamcontext; in idle is dat een
+        // no-op (idle-guard) — hier dus geen legacy-fallback.
         ensureSync();
     }
 
@@ -5953,7 +5992,7 @@ function watchPlayersFromFirebase(onCancel) {
 
                     if (restorePending && teamsGen === myGen) {
 
-                        console.warn("⚠️ Teamkeuze herstellen duurde te lang: tijdelijk legacy.");
+                        console.warn("⚠️ Teamkeuze herstellen duurde te lang: tijdelijk idle.");
 
                         finishRestore(
                             uid,
@@ -5986,7 +6025,7 @@ function watchPlayersFromFirebase(onCancel) {
             if (restorePending) {
                 finishRestore(
                     user.uid,
-                    { action: "legacy", clearPref: false, notice: "temporary-error", retry: true }
+                    { action: "idle", clearPref: false, notice: "temporary-error", retry: true }
                 );
             }
         }
@@ -6612,7 +6651,7 @@ function watchPlayersFromFirebase(onCancel) {
         renderAuthUI(user);
 
         // Mijn teams: eerst de teamvoorkeur bepalen (zet restorePending
-        // synchroon), zodat de legacy-sync hierop kan wachten.
+        // synchroon), zodat sync hierop kan wachten.
         if (!!user && !user.isAnonymous && user.emailVerified) {
             onVerifiedAccount(user);
         } else {
@@ -6620,7 +6659,7 @@ function watchPlayersFromFirebase(onCancel) {
         }
 
         // Een teamcontext is alleen geldig voor het account dat hem
-        // heeft geactiveerd. Anders expliciet terug naar legacy.
+        // heeft geactiveerd. Anders expliciet terug naar idle.
         if (activeContext.mode === "team") {
 
             if (user && !user.isAnonymous && contextUid === null) {
@@ -6631,10 +6670,10 @@ function watchPlayersFromFirebase(onCancel) {
             } else if (!user || user.isAnonymous || user.uid !== contextUid) {
 
                 console.warn(
-                    "⚠️ Teamcontext niet meer geldig voor deze gebruiker: terug naar LEGACY."
+                    "⚠️ Teamcontext niet meer geldig voor deze gebruiker: terug naar idle."
                 );
 
-                setActiveContext(LEGACY_CONTEXT);
+                setActiveContext(IDLE_CONTEXT);
             }
         }
 
