@@ -316,6 +316,88 @@ describe('redeemInvite', () => {
     await run('redeemInvite', authVerified('brandNew'), { code });
     assert.strictEqual((await snapVal('teams/teamA/members')).brandNew, 'trainer');
   });
+
+  // --- Regression tests for path-scoped transaction fix ---
+
+  it('root-level write does not break redeemInvite (path-scoped txn)', async () => {
+    // Simulates a concurrent write to /team that would cause a root-level
+    // transaction conflict in the old code. Path-scoped txn is unaffected.
+    const code = await createCode();
+    await mock.ref('team').set({ display: true });
+    const r = await run('redeemInvite', authVerified('invitee2'), { code });
+    assert.strictEqual(r.role, 'trainer');
+    assert.strictEqual(r.accepted, true);
+    assert.strictEqual((await snapVal('inviteCodes/' + code)).used, true);
+    assert.strictEqual(await snapVal('teams/teamA/members/invitee2'), 'trainer');
+    assert.strictEqual(await snapVal('users/invitee2/teams/teamA'), true);
+  });
+
+  it('transaction abort (concurrent claim) -> 409 already-exists (al verbruikt), not al-lid', async () => {
+    // Simulates another caller claiming the code between Phase 1 read and
+    // Phase 3 transaction. Old code: catch-all throw gave misleading "al lid".
+    const code = await createCode();
+    const origRef = mock.ref;
+    mock.ref = (path = '') => {
+      const handle = origRef(path);
+      if (path === 'inviteCodes/' + code) {
+        return {
+          once: handle.once,
+          set: handle.set,
+          update: handle.update,
+          transaction: async () => ({
+            committed: false,
+            snapshot: { exists: () => true, val: () => ({ used: false }) }
+          })
+        };
+      }
+      return handle;
+    };
+    await rejectsWith(
+      run('redeemInvite', authVerified('invitee2'), { code }),
+      'already-exists'
+    );
+    // Code must remain unused — no member added
+    assert.strictEqual((await snapVal('inviteCodes/' + code)).used, false);
+    assert.strictEqual(await snapVal('teams/teamA/members/invitee2'), undefined);
+  });
+
+  it('write failure after claim -> rollback code to unused + internal error', async () => {
+    const code = await createCode();
+    const origRef = mock.ref;
+    mock.ref = (path = '') => {
+      const handle = origRef(path);
+      if (path.startsWith('teams/teamA/members/')) {
+        return {
+          once: handle.once,
+          set: async () => { throw new Error('Simulated DB write failure'); },
+          update: handle.update,
+          transaction: handle.transaction
+        };
+      }
+      return handle;
+    };
+    await rejectsWith(
+      run('redeemInvite', authVerified('invitee2'), { code }),
+      'internal'
+    );
+    // Code must be rolled back to used: false
+    assert.strictEqual((await snapVal('inviteCodes/' + code)).used, false);
+    assert.strictEqual(await snapVal('teams/teamA/members/invitee2'), undefined);
+  });
+
+  it('cross-account: creator != redeemer, redeemer becomes trainer (not owner)', async () => {
+    // Mirrors user scenario: rickspronk@hotmail.com creates, DRMverhuur@outlook.com redeems
+    const code = await createCode('teamA', 'ownerA');
+    const r = await run('redeemInvite', authVerified('invitee3'), { code });
+    assert.strictEqual(r.role, 'trainer');
+    assert.strictEqual(r.teamId, 'teamA');
+    assert.strictEqual((await snapVal('teams/teamA/members/invitee3')), 'trainer');
+    assert.strictEqual(await snapVal('users/invitee3/teams/teamA'), true);
+    // Owner remains owner - not demoted
+    assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), 'owner');
+    // Code consumed
+    assert.strictEqual((await snapVal('inviteCodes/' + code)).used, true);
+  });
 });
 
 // ===========================================================================

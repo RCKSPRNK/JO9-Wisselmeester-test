@@ -26,7 +26,8 @@
  * ==========================================================================
  */
 
-const admin = require('firebase-admin');
+const { initializeApp, getApps } = require('firebase-admin/app');
+const { getDatabase } = require('firebase-admin/database');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const crypto = require('crypto');
 
@@ -38,8 +39,12 @@ const crypto = require('crypto');
 let adminApp = null;
 function getAdminApp() {
   if (adminApp) return adminApp;
-  if (!admin.apps.length) admin.initializeApp();
-  adminApp = admin.apps[0];
+  const apps = getApps();
+  if (apps.length === 0) {
+    adminApp = initializeApp();
+  } else {
+    adminApp = apps[0];
+  }
   return adminApp;
 }
 // Mock‑injectie (tests) of Admin‑fallback (runtime). Handlers gebruiken getDb().
@@ -49,7 +54,7 @@ let _db = null;
 function __setDb(db) { _db = db; }
 function getDb() {
   if (_db) return _db;
-  return getAdminApp().database();
+  return getDatabase(getAdminApp());
 }
 
 // Pariteit met de RTDB Rules: ALLEEN een geverifieerd, niet‑anoniem account.
@@ -135,7 +140,7 @@ const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 dagen
 // ---------------------------------------------------------------------------
 // 1) createInviteCode  (alleen owner van een bestaand team)
 // ---------------------------------------------------------------------------
-exports.createInviteCode = onCall(async (request) => {
+exports.createInviteCode = onCall({ region: 'europe-west1' }, async (request) => {
   const uid = requireVerifiedAccount(request);
 
   const teamId = request.data && request.data.teamId;
@@ -185,7 +190,7 @@ exports.createInviteCode = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 // 2) previewInvite  (read‑only; geen member‑toevoeging, geen used‑flip)
 // ---------------------------------------------------------------------------
-exports.previewInvite = onCall(async (request) => {
+exports.previewInvite = onCall({ region: 'europe-west1' }, async (request) => {
   requireVerifiedAccount(request);
 
   const code = normalizeInviteCode(request.data && request.data.code);
@@ -219,19 +224,26 @@ exports.previewInvite = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// 3) redeemInvite  (atomic + single‑use; nieuwe user is ALTIJD 'trainer')
+// 3) redeemInvite  (atomic + single-use; nieuwe user is ALTIJD 'trainer')
 // ---------------------------------------------------------------------------
-// Atomisiteit: één ROOT‑transactie die conditioneel (used===false,
-// not‑expired, nog geen member) tegelijkertijd used=true + members[uid]=
-// 'trainer' + users-index zet. Alleen één redeem‑poging commit; de tweede ziet
-// used===true → aborted. Zo ontstaat geen gedeelte‑success "used=true maar
-// member mist" — alles‑of‑niets in één commit.
+// Atomisiteit via path-scoped transaction op inviteCodes/[code]:
+//   - Fase 1: read + validate code (path-scoped reads, geen root lock)
+//   - Fase 2: membership check (path-scoped read, geen root lock)
+//   - Fase 3: transaction claimt code → used=true (path-scoped, single-use)
+//   - Fase 4: schrijf members[uid]=trainer + users[uid].teams[teamId]=true
+//   - Fase 5: return team metadata
 //
-// Trade‑off (genoteerd): RTDB root‑transactie leest/schrijft de hele boom één
-// keer; prima voor de kleine Wisselmeester DB. Bij groei naar Firestore
-// overwegen we een server‑side transaction met preconditions.
+// ROOT-transactie verwijderd: db.ref().transaction() leest/schrijft de hele
+// boom — elke onbedoelde write (Realtime-listener writes naar /team, /users)
+// veroorzaakt conflict → retry exhaustion → misleiding 409. Path-scoped fix:
+// alleen inviteCodes/[code] wordt gecontroleerd → geen spurious conflicts.
+//
+// Safety-checks ongewijzigd: code bestaat, niet verbruikt, niet verlopen,
+// team bestaat, nog geen member. Bij transactie-abort (code door concurrerende
+// caller verbruikt) → 409 "al verbruikt". Bij write-falen na claim → rollback
+// + 500 "probeer opnieuwk". Echte al-lid → 409 "al lid". (zie references/)
 // ---------------------------------------------------------------------------
-exports.redeemInvite = onCall(async (request) => {
+exports.redeemInvite = onCall({ region: 'europe-west1' }, async (request) => {
   const uid = requireVerifiedAccount(request);
 
   const code = normalizeInviteCode(request.data && request.data.code);
@@ -242,68 +254,79 @@ exports.redeemInvite = onCall(async (request) => {
   const db = getDb();
   const now = Date.now();
 
-  let teamId;
-  const result = await db.ref().transaction((root) => {
-    if (!root || typeof root !== 'object') {
-      return; // abort
-    }
-    const entry = (root.inviteCodes && root.inviteCodes[code]) || null;
-    if (!entry) {
-      return; // code bestaat niet → abort
-    }
-    if (entry.used === true) {
-      return; // already used → abort (single‑use)
-    }
-    if (typeof entry.expiresAt === 'number' && entry.expiresAt <= now) {
-      return; // expired → abort
-    }
-    const tId = entry.teamId;
-    if (!isValidTeamId(tId)) {
-      return; // corrupt → abort
-    }
-    const members = (((root.teams || {})[tId] || {}).members) || {};
-    const own = members[uid];
-    if (own === 'owner' || own === 'trainer') {
-      return; // al lid → abort (niet consumeren)
-    }
+  // Fase 1: Read + validate invite code (path-scoped, no root lock)
+  const snap = await db.ref('inviteCodes/' + code).once('value');
+  const entry = snap.exists() ? snap.val() : null;
 
-    // Deep‑clone + mutatie: NOOIR owner, ALTIJD trainer.
-    const next = JSON.parse(JSON.stringify(root));
-    if (!next.inviteCodes) next.inviteCodes = {};
-    next.inviteCodes[code] = Object.assign({}, next.inviteCodes[code] || entry, { used: true });
-    if (!next.teams) next.teams = {};
-    if (!next.teams[tId]) next.teams[tId] = {};
-    if (!next.teams[tId].members) next.teams[tId].members = {};
-    next.teams[tId].members[uid] = 'trainer';
-    if (!next.users) next.users = {};
-    if (!next.users[uid]) next.users[uid] = {};
-    if (!next.users[uid].teams) next.users[uid].teams = {};
-    next.users[uid].teams[tId] = true;
+  if (!entry) {
+    throw new HttpsError('not-found', 'Uitnodiging niet gevonden.');
+  }
+  if (entry.used === true) {
+    throw new HttpsError('already-exists', 'Deze uitnodiging is al verbruikt.');
+  }
+  if (typeof entry.expiresAt === 'number' && entry.expiresAt <= now) {
+    throw new HttpsError('failed-precondition', 'Deze uitnodiging is verlopen.');
+  }
 
-    teamId = tId;
-    return next;
-  });
+  const teamId = entry.teamId;
+  if (!isValidTeamId(teamId)) {
+    throw new HttpsError('not-found', 'Team bij deze uitnodiging bestaat niet meer.');
+  }
+  if (!(await teamExists(db, teamId))) {
+    throw new HttpsError('not-found', 'Team bij deze uitnodiging bestaat niet meer.');
+  }
 
-  if (!result.committed) {
-    // Abort → bepaal de redelijk via een NON‑muterende herlezing (safe, geen race
-    // op de kern‑schrijfoperatie; enkel voor de foutcode).
-    const snap = await db.ref('inviteCodes/' + code).once('value');
-    const e = snap.exists() ? snap.val() : null;
-    if (!e) {
-      throw new HttpsError('not-found', 'Uitnodiging niet gevonden.');
-    }
-    if (e.used === true) {
-      throw new HttpsError('already-exists', 'Deze uitnodiging is al verbruikt.');
-    }
-    if (typeof e.expiresAt === 'number' && e.expiresAt <= now) {
-      throw new HttpsError('failed-precondition', 'Deze uitnodiging is verlopen.');
-    }
-    if (!isValidTeamId(e.teamId) || !(await teamExists(db, e.teamId))) {
-      throw new HttpsError('not-found', 'Team bij deze uitnodiging bestaat niet meer.');
-    }
+  // Fase 2: Check membership (path-scoped read, no root lock).
+  // 409 "al lid" ALLEEN als user echt al owner/trainer is.
+  const _isMember = await isMember(db, teamId, uid);
+  if (_isMember) {
     throw new HttpsError('already-exists', 'Je bent al lid van dit team.');
   }
 
+  // Fase 3: Atomisch claim via path-scoped transaction op inviteCodes/[code].
+  // Operates ALLEEN op inviteCodes/[code] -> geen conflict met writes naar
+  // /team, /users, /teams of andere nodes.
+  let claimed = false;
+  const txn = await db.ref('inviteCodes/' + code).transaction((current) => {
+    if (!current || typeof current !== 'object') {
+      return; // abort — code verwijderd
+    }
+    if (current.used === true) {
+      return; // abort — door andere caller verbruikt
+    }
+    if (typeof current.expiresAt === 'number' && current.expiresAt <= now) {
+      return; // abort — verlopen
+    }
+    claimed = true;
+    return Object.assign({}, current, { used: true });
+  });
+
+  if (!txn.committed || !claimed) {
+    // Transaction aborted -> code werd door andere caller verbruikt/verlopen
+    console.error(JSON.stringify({
+      evt: 'redeem_invite_conflict',
+      committed: false,
+      isMember: _isMember
+    }));
+    throw new HttpsError('already-exists', 'Deze uitnodiging is al verbruikt.');
+  }
+
+  // Fase 4: Voeg trainer + user-index toe (path-scoped writes).
+  try {
+    await db.ref('teams/' + teamId + '/members/' + uid).set('trainer');
+    await db.ref('users/' + uid + '/teams/' + teamId).set(true);
+  } catch (err) {
+    // Rollback: geef code weer vrij -> niet-leden mogen opnieuw proberen
+    try {
+      await db.ref('inviteCodes/' + code).update({ used: false });
+    } catch (_rollbackErr) {
+      console.error(JSON.stringify({ evt: 'redeem_invite_rollback_failed' }));
+    }
+    console.error(JSON.stringify({ evt: 'redeem_invite_write_failed' }));
+    throw new HttpsError('internal', 'Kon deelnemer niet toevoegen. Probeer het opnieuwk.');
+  }
+
+  // Fase 5: Return metadata
   const meta = await readTeamMeta(db, teamId);
   return {
     teamId: teamId,
@@ -360,7 +383,7 @@ function _mkMockDb(seed) {
       set: async (value) => writeLeaf(parts, value),
       update: async (patches) => {
         for (const [p, v] of Object.entries(patches)) {
-          writeLeaf(p.split('/').filter(Boolean), v);
+          writeLeaf([...parts, ...p.split('/').filter(Boolean)], v);
         }
       },
       transaction: async (fn) => {
