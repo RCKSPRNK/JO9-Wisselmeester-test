@@ -6580,8 +6580,8 @@ function watchPlayersFromFirebase(onCancel) {
         // All members: "Team verlaten" zichtbaar bij actief team
         authEl("leaveTeamSection").style.display = inTeam ? "block" : "none";
         // Owner-only: "Team verwijderen" knop
-        authEl("deleteTeamBtn").parentElement.style.display =
-            (inTeam && activeIsOwner) ? "block" : "none";
+        authEl("deleteTeamBtn").style.display =
+            (inTeam && activeIsOwner) ? "inline-block" : "none";
     }
 
     // ---- vertaling server-errors naar begrijpelijk Nederlands ----
