@@ -994,6 +994,32 @@ button:hover {
 
     </div>
 
+    <!-- Option B: Trainer toevoegen via e-mailadres (alleen owner) -->
+    <div id="trainerByEmailSection" class="invite-section" style="display:none;">
+
+        <h3>Trainer toevoegen</h3>
+
+        <p class="small">
+            Voeg een trainer toe voor dit team via het e-mailadres. De trainer
+            krijgt automatisch toegang zodra diegene inlogt. Geen
+            uitnodigingscode nodig.
+        </p>
+
+        <div id="trainerByEmailMessage" class="auth-message" style="display:none;"></div>
+
+        <form class="auth-form" id="trainerByEmailForm" novalidate>
+            <label>
+                E-mailadres van de trainer
+                <input type="email"
+                       id="trainerByEmailInput"
+                       autocomplete="email"
+                       placeholder="trainer@voorbeeld.nl">
+            </label>
+            <button type="submit" class="primary" id="trainerByEmailBtn">Toevoegen</button>
+        </form>
+
+    </div>
+
 </div>
 
 <div class="card">
@@ -4748,7 +4774,9 @@ function watchPlayersFromFirebase(onCancel) {
     const inviteCall = {
         createInviteCode: httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/createInviteCode"),
         previewInvite:    httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/previewInvite"),
-        redeemInvite:     httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/redeemInvite")
+        redeemInvite:      httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/redeemInvite"),
+        addTrainerByEmail: httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/addTrainerByEmail"),
+        removeTrainer:     httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/removeTrainer")
     };
 
     window.jo9Firebase = {
@@ -4770,6 +4798,12 @@ function watchPlayersFromFirebase(onCancel) {
 
         redeemInvite:
             inviteCall.redeemInvite,
+
+        addTrainerByEmail:
+            inviteCall.addTrainerByEmail,
+
+        removeTrainer:
+            inviteCall.removeTrainer,
 
         savePlayersToFirebase:
             savePlayersToFirebase,
@@ -5777,6 +5811,10 @@ function watchPlayersFromFirebase(onCancel) {
     let invitePreviewMeta = null;   // {teamId, clubName, teamName, season} of null
     let invitePendingCode = null;   // genormaliseerde code voor redeem
 
+    // Option B: trainer toevoegen via e-mail
+    let trainerByEmailGen = 0;      // generation guard tegen stale async
+    let trainerByEmailBusy = false;   // één addTrainer actie tegelijk
+
     // Header en clubnaam volgen het actieve team. Alleen weergave:
     // de rekenlogica leest APP_CONFIG niet.
     function applyTeamBranding(meta) {
@@ -6720,10 +6758,15 @@ function watchPlayersFromFirebase(onCancel) {
         inviteCodeCreated = null;
         invitePreviewMeta = null;
         invitePendingCode = null;
+        trainerByEmailGen++;
+        trainerByEmailBusy = false;
+        authEl("trainerByEmailInput").value = "";
+        showTrainerByEmailMessage("", "");
         showInviteCreateMessage("", "");
         showInviteEnterMessage("", "");
         renderInviteCreatePanel();
         renderInvitePreview();
+        renderTrainerByEmail();
         renderInviteSections();
     }
 
@@ -6761,6 +6804,7 @@ function watchPlayersFromFirebase(onCancel) {
             && !!activeContext.teamId
             && activeIsOwner;
         authEl("inviteCreateSection").style.display = showCreate ? "block" : "none";
+        authEl("trainerByEmailSection").style.display = showCreate ? "block" : "none";
     }
 
     function renderInviteCreatePanel() {
@@ -6830,6 +6874,67 @@ function watchPlayersFromFirebase(onCancel) {
             "internal": "Er ging iets mis aan de server. Probeer het opnieuw."
         };
         return (code && map[code]) || "Er ging iets mis. Probeer het opnieuw.";
+    }
+
+    // ---- B: owner voegt trainer toe via e-mailadres (callable addTrainerByEmail) ----
+    function showTrainerByEmailMessage(type, text) {
+        const box = authEl("trainerByEmailMessage");
+        if (!text) { box.style.display = "none"; return; }
+        box.className = "auth-message " + type;
+        box.textContent = text;
+        box.style.display = "block";
+    }
+
+    function renderTrainerByEmail() {
+        const btn = authEl("trainerByEmailBtn");
+        if (!btn) return;
+        btn.disabled = trainerByEmailBusy || !activeIsOwner || activeContext.mode !== "team";
+        btn.textContent = trainerByEmailBusy ? "Toevoegen…" : "Toevoegen";
+    }
+
+    async function doAddTrainerByEmail(event) {
+        event.preventDefault();
+        const user = auth.currentUser;
+        if (!user || user.isAnonymous || !user.emailVerified) return;
+
+        const teamId = activeContext.mode === "team" ? activeContext.teamId : null;
+        if (!teamId || !activeIsOwner) {
+            showTrainerByEmailMessage("error",
+                "Alleen de eigenaar van een team kan trainers toevoegen.");
+            return;
+        }
+        if (trainerByEmailBusy) {
+            return;
+        }
+
+        const email = (authEl("trainerByEmailInput").value || "").trim();
+        if (!email) {
+            showTrainerByEmailMessage("error", "Voer een e-mailadres in.");
+            return;
+        }
+
+        const token = ++trainerByEmailGen;
+        const uid = user.uid;
+        trainerByEmailBusy = true;
+        showTrainerByEmailMessage("", "");
+        renderTrainerByEmail();
+
+        try {
+            const res = await inviteCall.addTrainerByEmail({ teamId: teamId, email: email });
+            // Stale-check: account of team gewijzigd tijdens await
+            if (trainerByEmailGen !== token || !auth.currentUser || auth.currentUser.uid !== uid) return;
+            showTrainerByEmailMessage("success",
+                "Trainer " + (res.data.email || email) + " toegevoegd als trainer.");
+            authEl("trainerByEmailInput").value = "";
+        } catch (error) {
+            if (trainerByEmailGen !== token || !auth.currentUser || auth.currentUser.uid !== uid) return;
+            showTrainerByEmailMessage("error", inviteErrorMessage(error));
+        } finally {
+            if (trainerByEmailGen === token) {
+                trainerByEmailBusy = false;
+                renderTrainerByEmail();
+            }
+        }
     }
 
     // ---- A: owner maakt een uitnodigingscode (callable createInviteCode) ----
@@ -7068,6 +7173,7 @@ function watchPlayersFromFirebase(onCancel) {
         doCheckInvite();
     });
     authEl("inviteAcceptBtn").addEventListener("click", doRedeemInvite);
+    authEl("trainerByEmailForm").addEventListener("submit", doAddTrainerByEmail);
 
 </script>
 <div id="lineupModal" class="lineup-modal" style="display:none;">

@@ -28,6 +28,7 @@
 
 const { initializeApp, getApps } = require('firebase-admin/app');
 const { getDatabase } = require('firebase-admin/database');
+const { getAuth } = require('firebase-admin/auth');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const crypto = require('crypto');
 
@@ -55,6 +56,14 @@ function __setDb(db) { _db = db; }
 function getDb() {
   if (_db) return _db;
   return getDatabase(getAdminApp());
+}
+// Mock‑injectie (tests) voor Auth Admin SDK. Runtime heeft _auth === null →
+// valt door naar getAuth(getAdminApp()). Tests injecteren via __setAuth().
+let _auth = null;
+function __setAuth(auth) { _auth = auth; }
+function getAuthInstance() {
+  if (_auth) return _auth;
+  return getAuth(getAdminApp());
 }
 
 // Pariteit met de RTDB Rules: ALLEEN een geverifieerd, niet‑anoniem account.
@@ -339,12 +348,149 @@ exports.redeemInvite = onCall({ region: 'europe-west1' }, async (request) => {
 });
 
 /*
+ * Option B: Trainer toevoegen via e-mailadres (zonder uitnodigingscode).
+ * De owner voert een trainer in via e-mail. De functie zoekt de UID bij die
+ * e-mail via Firebase Auth Admin SDK, en schrijft members/{uid} = 'trainer'
+ * plus een reverse-index in users/{uid}/teams/{teamId} (Admin SDK write,
+ * omzeilt rules en de kapotte transaction() in Cloud Functions).
+ */
+exports.addTrainerByEmail = onCall({ region: 'europe-west1' }, async (request) => {
+  const callerUid = requireVerifiedAccount(request);
+  const email = (request.data && request.data.email || '').trim().toLowerCase();
+  const teamId = request.data && request.data.teamId;
+
+  if (!teamId || !isValidTeamId(teamId)) {
+    throw new HttpsError('invalid-argument', 'Ongeldig team.');
+  }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpsError('invalid-argument', 'Ongeldig e-mailadres.');
+  }
+
+  const db = getDb();
+  const auth = getAuthInstance();
+
+  // 1. Verify caller is owner of the team
+  if (!(await verifyOwner(db, teamId, callerUid))) {
+    throw new HttpsError('permission-denied', 'Alleen de owner kan trainers toevoegen.');
+  }
+
+  // 2. Look up the trainer's UID by email via Admin Auth SDK
+  let trainerRecord;
+  try {
+    trainerRecord = await auth.getUserByEmail(email);
+  } catch (e) {
+    if (e.code === 'auth/user-not-found') {
+      throw new HttpsError('not-found', 'Geen gebruiker met dit e-mailadres gevonden.');
+    }
+    throw new HttpsError('internal', 'Fout bij opzoeken gebruiker: ' + (e.message || e.code));
+  }
+
+  const trainerUid = trainerRecord.uid;
+
+  // 3. Verify the account is verified (non-anonymous)
+  if (trainerRecord.emailVerified !== true) {
+    throw new HttpsError('failed-precondition',
+      'De gebruiker heeft zijn e-mailadres nog niet geverifieerd.');
+  }
+  if (trainerRecord.providerData && trainerRecord.providerData.length === 0) {
+    throw new HttpsError('failed-precondition',
+      'Anonieme accounts kunnen geen trainer zijn.');
+  }
+
+  // 4. Check the trainer is not already a member
+  if (await isMember(db, teamId, trainerUid)) {
+    throw new HttpsError('already-exists',
+      'Deze trainer is al lid van dit team.');
+  }
+
+  // 5. Add the trainer as 'trainer' (Admin SDK write — bypasses rules)
+  const trainerRef = db.ref('teams/' + teamId + '/members/' + trainerUid);
+  const reverseRef = db.ref('users/' + trainerUid + '/teams/' + teamId);
+
+  try {
+    // Write members/{uid} = 'trainer'
+    await trainerRef.set('trainer');
+    // Write reverse-index users/{uid}/teams/{teamId} = true
+    await reverseRef.set(true);
+  } catch (e) {
+    // If the second write fails, roll back the first
+    await trainerRef.remove().catch(() => {});
+    throw new HttpsError('internal',
+      'Fout bij toevoegen trainer: ' + (e.message || e.code));
+  }
+
+  return {
+    teamId: teamId,
+    uid: trainerUid,
+    email: email,
+    role: 'trainer'
+  };
+});
+
+/*
+ * Option B: Trainer verwijderen via e-mailadres (beheer door owner).
+ * Verwijdert members/{uid} en users/{uid}/teams/{teamId}.
+ */
+exports.removeTrainer = onCall({ region: 'europe-west1' }, async (request) => {
+  const callerUid = requireVerifiedAccount(request);
+  const email = (request.data && request.data.email || '').trim().toLowerCase();
+  const teamId = request.data && request.data.teamId;
+
+  if (!teamId || !isValidTeamId(teamId)) {
+    throw new HttpsError('invalid-argument', 'Ongeldig team.');
+  }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpsError('invalid-argument', 'Ongeldig e-mailadres.');
+  }
+
+  const db = getDb();
+  const auth = getAuthInstance();
+
+  // 1. Verify caller is owner
+  if (!(await verifyOwner(db, teamId, callerUid))) {
+    throw new HttpsError('permission-denied', 'Alleen de owner kan trainers verwijderen.');
+  }
+
+  // 2. Look up the trainer's UID by email
+  let trainerRecord;
+  try {
+    trainerRecord = await auth.getUserByEmail(email);
+  } catch (e) {
+    if (e.code === 'auth/user-not-found') {
+      throw new HttpsError('not-found', 'Geen gebruiker met dit e-mailadres gevonden.');
+    }
+    throw new HttpsError('internal', 'Fout bij opzoeken gebruiker: ' + (e.message || e.code));
+  }
+
+  const trainerUid = trainerRecord.uid;
+
+  // 3. Check the trainer is actually a member with role 'trainer'
+  const snap = await db.ref('teams/' + teamId + '/members/' + trainerUid).once('value');
+  if (!snap.exists() || snap.val() !== 'trainer') {
+    throw new HttpsError('not-found',
+      'Deze trainer is niet lid van dit team.');
+  }
+
+  // 4. Remove both the membership and reverse-index
+  await db.ref('teams/' + teamId + '/members/' + trainerUid).remove();
+  await db.ref('users/' + trainerUid + '/teams/' + teamId).remove();
+
+  return {
+    teamId: teamId,
+    uid: trainerUid,
+    email: email,
+    role: 'removed'
+  };
+});
+
+/*
  * ---------------------------------------------------------------------------
  * Mock‑infrastructuur (lokale unit‑tests; in runtime is dit echte Admin SDK)
  * ---------------------------------------------------------------------------
- * `__setDb` injecteert een fake DB zodat geen initializeApp/GCP‑creds nodig
- * zijn. De handlers lezen via `getDb()` → de mock. Tests roepen de handlers via
- * `callable.run(request)` aan (v2‑test‑hook; zie onCall → `__trigger`/`run`).
+ * `__setDb` en `__setAuth` injecteren mocks zodat geen initializeApp/GCP‑creds
+ * nodig zijn. De handlers lezen via `getDb()`/`getAuthInstance()` → de mock.
+ * Tests roepen de handlers via `callable.run(request)` aan
+ * (v2‑test‑hook; zie onCall → `__trigger`/`run`).
  */
 function _mkMockDb(seed) {
   const envelope = { v: JSON.parse(JSON.stringify(seed || {})) };
@@ -409,3 +555,4 @@ exports.__isValidTeamId = isValidTeamId;
 exports.__normalizeInviteCode = normalizeInviteCode;
 exports.__isValidInviteCode = isValidInviteCode;
 exports.__INVITE_TTL_MS = INVITE_TTL_MS;
+exports.__setAuth = __setAuth;
