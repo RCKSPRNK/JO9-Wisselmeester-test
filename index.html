@@ -963,12 +963,12 @@ button:hover {
         <div id="trainerList" class="trainer-list" style="display:none;"></div>
         <div id="trainerListMessage" class="auth-message" style="display:none;"></div>
 
-        <!-- Team verlaten (alle leden zichtbaar) -->
-        <div style="margin-top:18px; padding-top:12px; border-top:1px solid #e0e0e0;">
-            <button type="button" class="secondary" id="leaveTeamBtn">Team verlaten</button>
-            <div id="leaveTeamMessage" class="auth-message" style="display:none;"></div>
-        </div>
+    </div>
 
+    <!-- Team verlaten (alle leden zichtbaar) -->
+    <div id="leaveTeamSection" style="margin-top:18px; padding-top:12px; border-top:1px solid #e0e0e0; display:none;">
+        <button type="button" class="secondary" id="leaveTeamBtn">Team verlaten</button>
+        <div id="leaveTeamMessage" class="auth-message" style="display:none;"></div>
     </div>
 
 </div>
@@ -6710,20 +6710,22 @@ function watchPlayersFromFirebase(onCancel) {
         const verified =
             !!user && !user.isAnonymous && !!user.emailVerified;
 
-        const showByEmail =
+        const inTeam =
             verified
             && activeContext.mode === "team"
-            && !!activeContext.teamId
-            && activeIsOwner;
-        authEl("trainerByEmailSection").style.display = showByEmail ? "block" : "none";
-        // Render de trainer-lijst wanneeer zichtbaar (owner-only)
-        if (showByEmail) {
+            && !!activeContext.teamId;
+        // Owner-only: trainer toevoegen + trainer-lijst
+        authEl("trainerByEmailSection").style.display = (inTeam && activeIsOwner) ? "block" : "none";
+        // Render de trainer-lijst wanneer zichtbaar (owner-only)
+        if (inTeam && activeIsOwner) {
             renderTrainerList();
         } else {
             authEl("trainerList").innerHTML = "";
             authEl("trainerListHeading").style.display = "none";
             authEl("trainerList").style.display = "none";
         }
+        // All members: "Team verlaten" zichtbaar bij actief team
+        authEl("leaveTeamSection").style.display = inTeam ? "block" : "none";
     }
 
     // ---- vertaling server-errors naar begrijpelijk Nederlands ----
@@ -6922,14 +6924,26 @@ function watchPlayersFromFirebase(onCancel) {
         if (!confirm("Weet je zeker dat je team '" + teamName + "' wilt verlaten?")) return;
 
         showLeaveTeamMessage("", "");
+        let resultData;
         try {
+            // Backend call: de enige operation die een foutmelding kan veroorzaken
             const res = await inviteCall.leaveTeam({ teamId: teamId });
-            if (res.data && res.data.transferred) {
-                showLeaveTeamMessage("success",
-                    "Jij was de eigenaar. Eigenaarrecht is overgegaan aan de langst aangesloten trainer.");
-            } else {
-                showLeaveTeamMessage("success", "Je hebt het team verlaten.");
-            }
+            resultData = res.data;
+        } catch (error) {
+            showLeaveTeamMessage("error", inviteErrorMessage(error));
+            return;  // voorkomt dubbele acties
+        }
+
+        // Succesvolle backend-actie — toon success
+        if (resultData && resultData.transferred) {
+            showLeaveTeamMessage("success",
+                "Jij was de eigenaar. Eigenaarrecht is overgegaan aan de langst aangesloten trainer.");
+        } else {
+            showLeaveTeamMessage("success", "Je hebt het team verlaten.");
+        }
+
+        // Frontend refresh — non-critical; errors logged not shown
+        try {
             resetContextState();
             await refreshTeams(user);
             const teamIdStr = String(teamId);
@@ -6939,8 +6953,8 @@ function watchPlayersFromFirebase(onCancel) {
                 if (other) { selectTeam(other.id); }
                 else { switchToPicker(); }
             }
-        } catch (error) {
-            showLeaveTeamMessage("error", inviteErrorMessage(error));
+        } catch (refreshError) {
+            console.error("doLeaveTeam: UI refresh error (non-critical):", refreshError);
         }
     }
 
