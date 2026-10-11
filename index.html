@@ -6703,6 +6703,23 @@ function watchPlayersFromFirebase(onCancel) {
         renderInviteSections();
     }
 
+    function resetContextState() {
+        // Reset team-context state na verlaten team.
+        // activeContext wordt door de caller (doLeaveTeam) nog
+        // gebruikt om te bepalen: selectTeam anders switchToPicker.
+        activeIsOwner = false;
+        ownerCheckTeamId = null;
+        trainerListGen++;
+        resetInviteState();
+        clearContextState();
+    }
+
+    function switchToPicker() {
+        // Geen ander team beschikbaar → terug naar teamoverzicht.
+        activeContext = IDLE_CONTEXT;
+        renderTeams();
+    }
+
     // ---- zichtbaarheid secties ----
     // Alleen de trainerByEmail-section; alleen owner van actief team ziet hem.
     function renderInviteSections() {
