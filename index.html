@@ -6579,8 +6579,8 @@ function watchPlayersFromFirebase(onCancel) {
         }
         // All members: "Team verlaten" zichtbaar bij actief team
         authEl("leaveTeamSection").style.display = inTeam ? "block" : "none";
-        // Owner-only: "Team verwijderen" knop
-        authEl("deleteTeamBtn").parentElement.style.display =
+        // Owner-only: "Team verwijderen" knop (direct op button, niet parent)
+        authEl("deleteTeamBtn").style.display =
             (inTeam && activeIsOwner) ? "block" : "none";
     }
 
