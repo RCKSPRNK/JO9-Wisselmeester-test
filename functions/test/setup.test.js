@@ -4,8 +4,8 @@
  *
  * Strategie: geen echte Firebase/runtime, geen Emulator. De handlers worden
  * aangeroepen via de v2-test-hook `callable.run(request)` (zie onCall ->
- * __trigger/`run`). Een in-memory mock-DB (functions/index.js __mkMockDb) wordt
- * via __setDb geinjecteerd, dus geen credentials/ADC nodig.
+ * __trigger/`run`). Een in-memory mock-DB (functions/index.js __mkMockDb) en
+ * een mock-Auth (__setAuth) worden geinjecteerd, dus geen credentials/ADC nodig.
  *
  * Auth-claims en database-writes blijven volledig onder de controle van de
  * Function — clients kunnen zich niet zelf trainer/owner maken.
@@ -22,7 +22,7 @@ try {
   throw new Error('functions/index.js kon niet geladen worden: ' + e.message);
 }
 
-const ENDPOINTS = ['createInviteCode', 'previewInvite', 'redeemInvite'];
+const ENDPOINTS = ['addTrainerByEmail', 'removeTrainer'];
 
 // ---- auth-tokens die de handler verwacht (pariteit met RTDB Rules) ----------
 const authVerified = (uid) => ({
@@ -51,7 +51,34 @@ const rejectsWith = async (p, code) => {
   assert.strictEqual(err && err.code, code, 'verwachtte ' + code + ', kreeg ' + (err && err.code));
 };
 
+// Mock Auth Admin SDK — simuleert getUserByEmail.
+// In de runtime gebruiken de handlers getAuth().getUserByEmail().
+// Tabel: email -> { uid, emailVerified, providerData }
+const mockUserTable = {
+  'owner@test.nl':      { uid: 'ownerA',      emailVerified: true,  providerData: [{ providerId: 'password' }] },
+  'trainer@test.nl':    { uid: 'trainerA',    emailVerified: true,  providerData: [{ providerId: 'password' }] },
+  'newtrainer@test.nl': { uid: 'newTrainer',  emailVerified: true,  providerData: [{ providerId: 'password' }] },
+  'unverified@test.nl': { uid: 'unverified',  emailVerified: false, providerData: [{ providerId: 'password' }] },
+  'anon@test.nl':       { uid: 'anonUser',    emailVerified: true,  providerData: [{ providerId: 'anonymous' }] }
+};
+
+function makeAuthMock(table) {
+  return {
+    getUserByEmail: async (email) => {
+      const key = (email || '').toLowerCase();
+      const u = table[key];
+      if (!u) {
+        const e = new Error('auth/user-not-found');
+        e.code = 'auth/user-not-found';
+        throw e;
+      }
+      return u;
+    }
+  };
+}
+
 // vaste seed: teamA met owner ownerA en trainer trainerA.
+// Geen inviteCodes-boom meer (oude functie verwijderd).
 const seed = () => ({
   teams: {
     teamA: {
@@ -62,25 +89,20 @@ const seed = () => ({
       season: '2026/2027',
       members: { ownerA: 'owner', trainerA: 'trainer' }
     }
-  },
-  inviteCodes: {}
+  }
 });
 
 let mock;
+let authMock;
 
 beforeEach(() => {
   mock = mod.__mkMockDb(seed());
   mod.__setDb(mock);
+  authMock = makeAuthMock(mockUserTable);
+  mod.__setAuth(authMock);
 });
 
 const run = (name, auth, data) => mod[name].run(req(auth, data));
-
-// Owner creert een code (herbruikbare fixture).
-const createCode = async (teamId = 'teamA', by = 'ownerA') => {
-  const r = await run('createInviteCode', authVerified(by), { teamId });
-  return r.code;
-};
-
 const snapVal = async (path) => (await mock.ref(path).once('value')).val();
 
 // ===========================================================================
@@ -89,7 +111,7 @@ describe('Fase 2C-3: Functions-basis — module & endpoints', () => {
     assert.ok(mod, 'module is undefined');
   });
 
-  it('de drie callable endpoints zijn aanwezig', () => {
+  it('de twee callable endpoints zijn aanwezig', () => {
     for (const name of ENDPOINTS) {
       assert.ok(mod[name] !== undefined, name + ' ontbreekt');
       assert.ok(
@@ -103,9 +125,7 @@ describe('Fase 2C-3: Functions-basis — module & endpoints', () => {
     assert.strictEqual(typeof mod.__getDb, 'function');
     assert.strictEqual(typeof mod.__requireVerifiedAccount, 'function');
     assert.strictEqual(typeof mod.__isValidTeamId, 'function');
-    assert.strictEqual(typeof mod.__normalizeInviteCode, 'function');
-    assert.strictEqual(typeof mod.__isValidInviteCode, 'function');
-    assert.strictEqual(typeof mod.__INVITE_TTL_MS, 'number');
+    assert.strictEqual(typeof mod.__setAuth, 'function');
   });
 });
 
@@ -137,277 +157,102 @@ describe('Fase 2C-3: beveiligingsstructuur — requireVerifiedAccount (pass-thro
 });
 
 // ===========================================================================
-describe('Fase 2C-3: code-validatie helpers (zuiver)', () => {
-  it('normalizeInviteCode normaliseert spacing/case en voegt dash toe', () => {
-    assert.strictEqual(mod.__normalizeInviteCode('k7p4 m2x9'), 'K7P4-M2X9');
-    assert.strictEqual(mod.__normalizeInviteCode('k7p4-m2x9'), 'K7P4-M2X9');
-    assert.strictEqual(mod.__normalizeInviteCode('K7P4M2X9'), 'K7P4-M2X9');
-  });
-  it('normalizeInviteCode verwijstert bij ongeldige code', () => {
-    assert.strictEqual(mod.__normalizeInviteCode('!!!'), '');
-    assert.strictEqual(mod.__normalizeInviteCode('TOOLONG-CODE'), '');
-  });
-  it('isValidInviteCode aanvat XXXX-XXXX zonder ambigue tekens', () => {
-    assert.strictEqual(mod.__isValidInviteCode('K7P4-M2X9'), true);
-    assert.strictEqual(mod.__isValidInviteCode('0000-0000'), false); // 0/O/1/I
-    assert.strictEqual(mod.__isValidInviteCode('O0I1-O0I1'), false);
-  });
-});
-
-// ===========================================================================
-describe('createInviteCode', () => {
+describe('addTrainerByEmail', () => {
   it('geen auth -> unauthenticated', async () => {
-    await rejectsWith(run('createInviteCode', undefined, { teamId: 'teamA' }), 'unauthenticated');
+    await rejectsWith(run('addTrainerByEmail', undefined, { teamId: 'teamA', email: 'newtrainer@test.nl' }), 'unauthenticated');
   });
   it('anoniem -> permission-denied', async () => {
-    await rejectsWith(run('createInviteCode', authAnon('a1'), { teamId: 'teamA' }), 'permission-denied');
+    await rejectsWith(run('addTrainerByEmail', authAnon('a1'), { teamId: 'teamA', email: 'newtrainer@test.nl' }), 'permission-denied');
   });
   it('onbevestigd -> permission-denied', async () => {
-    await rejectsWith(run('createInviteCode', authUnverified('u1'), { teamId: 'teamA' }), 'permission-denied');
+    await rejectsWith(run('addTrainerByEmail', authUnverified('u1'), { teamId: 'teamA', email: 'newtrainer@test.nl' }), 'permission-denied');
   });
   it('trainer (geen owner) -> permission-denied', async () => {
-    await rejectsWith(run('createInviteCode', authVerified('trainerA'), { teamId: 'teamA' }), 'permission-denied');
-  });
-  it('team niet gevonden -> not-found', async () => {
-    await rejectsWith(run('createInviteCode', authVerified('ownerA'), { teamId: 'teamGhost' }), 'not-found');
+    await rejectsWith(run('addTrainerByEmail', authVerified('trainerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' }), 'permission-denied');
   });
   it('ongeldig teamId -> invalid-argument', async () => {
-    await rejectsWith(run('createInviteCode', authVerified('ownerA'), { teamId: 'a/../b' }), 'invalid-argument');
+    await rejectsWith(run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'a/../b', email: 'newtrainer@test.nl' }), 'invalid-argument');
   });
-  it('owner -> geldige code + record met juiste velden', async () => {
-    const r = await run('createInviteCode', authVerified('ownerA'), { teamId: 'teamA' });
-    assert.ok(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(r.code));
+  it('ongeldig e-mailadres -> invalid-argument', async () => {
+    await rejectsWith(run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'teamA', email: 'not-an-email' }), 'invalid-argument');
+  });
+  it('onbekend e-mailadres -> not-found', async () => {
+    await rejectsWith(run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'teamA', email: 'nobody@test.nl' }), 'not-found');
+  });
+  it('onbevestigde gebruiker via e-mail -> failed-precondition', async () => {
+    await rejectsWith(run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'teamA', email: 'unverified@test.nl' }), 'failed-precondition');
+  });
+  it('owner -> voegt trainer toe + reverse-index; NOOIT owner', async () => {
+    const r = await run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' });
     assert.strictEqual(r.teamId, 'teamA');
-    assert.strictEqual(typeof r.expiresAt, 'number');
-    assert.ok(r.expiresAt > Date.now()); // verloopt ~7d in de toekomst
-
-    const rec = await snapVal('inviteCodes/' + r.code);
-    assert.strictEqual(rec.teamId, 'teamA');
-    assert.strictEqual(rec.used, false);
-    assert.strictEqual(rec.createdBy, 'ownerA');
-    assert.strictEqual(typeof rec.createdAt, 'number');
-    assert.strictEqual(rec.expiresAt, r.expiresAt);
-  });
-  it('twee aanmaaken geven unieke codes', async () => {
-    const r1 = await run('createInviteCode', authVerified('ownerA'), { teamId: 'teamA' });
-    const r2 = await run('createInviteCode', authVerified('ownerA'), { teamId: 'teamA' });
-    assert.notStrictEqual(r1.code, r2.code);
-  });
-  it('code wordt admin-only geschreven (inviteCodes aanwezig, members onaangeroerd)', async () => {
-    const r = await run('createInviteCode', authVerified('ownerA'), { teamId: 'teamA' });
-    const members = await snapVal('teams/teamA/members');
-    assert.deepStrictEqual(Object.keys(members).sort(), ['ownerA', 'trainerA']);
-    assert.strictEqual(members.ownerA, 'owner');
-    assert.strictEqual(members.trainerA, 'trainer');
-  });
-});
-
-// ===========================================================================
-describe('previewInvite', () => {
-  it('geen auth -> unauthenticated', async () => {
-    await rejectsWith(run('previewInvite', undefined, { code: 'ABCD-1234' }), 'unauthenticated');
-  });
-  it('ongeldige code -> invalid-argument', async () => {
-    await rejectsWith(run('previewInvite', authVerified('invitee1'), { code: '!!!' }), 'invalid-argument');
-  });
-  it('onbekende code -> not-found', async () => {
-    await rejectsWith(run('previewInvite', authVerified('invitee1'), { code: 'ZZZZ-ZZZZ' }), 'not-found');
-  });
-  it('geldige code -> metadata (geen role/used)', async () => {
-    const code = await createCode();
-    const preview = await run('previewInvite', authVerified('invitee1'), { code });
-    assert.deepStrictEqual(preview, {
-      teamId: 'teamA',
-      clubName: 'Club A',
-      teamName: 'JO9-1',
-      season: '2026/2027'
-    });
-    assert.ok(!('role' in preview));
-    assert.ok(!('used' in preview));
-  });
-  it('verlopen code -> failed-precondition', async () => {
-    await mock.ref('inviteCodes/PAST-PAST').set({
-      teamId: 'teamA', expiresAt: 1, used: false, createdBy: 'ownerA', createdAt: 0
-    });
-    await rejectsWith(run('previewInvite', authVerified('invitee1'), { code: 'PAST-PAST' }), 'failed-precondition');
-  });
-  it('gebruikte code -> failed-precondition', async () => {
-    await mock.ref('inviteCodes/USED-USED').set({
-      teamId: 'teamA', expiresAt: 9999999999999, used: true, createdBy: 'ownerA', createdAt: 0
-    });
-    await rejectsWith(run('previewInvite', authVerified('invitee1'), { code: 'USED-USED' }), 'failed-precondition');
-  });
-});
-
-// ===========================================================================
-describe('redeemInvite', () => {
-  it('geen auth -> unauthenticated', async () => {
-    await rejectsWith(run('redeemInvite', undefined, { code: 'ABCD-1234' }), 'unauthenticated');
-  });
-  it('ongeldige code -> invalid-argument', async () => {
-    await rejectsWith(run('redeemInvite', authVerified('newUser'), { code: '!!!' }), 'invalid-argument');
-  });
-  it('onbekende code -> not-found', async () => {
-    await rejectsWith(run('redeemInvite', authVerified('newUser'), { code: 'ZZZZ-ZZZZ' }), 'not-found');
-  });
-  it('verlopen code -> failed-precondition; code blijft unused, geen member', async () => {
-    await mock.ref('inviteCodes/PAST-PAST').set({
-      teamId: 'teamA', expiresAt: 1, used: false, createdBy: 'ownerA', createdAt: 0
-    });
-    await rejectsWith(run('redeemInvite', authVerified('newUser'), { code: 'PAST-PAST' }), 'failed-precondition');
-    assert.strictEqual((await snapVal('inviteCodes/PAST-PAST')).used, false);
-    assert.strictEqual(await snapVal('teams/teamA/members/newUser'), undefined);
-  });
-
-  it('geldige code -> trainer + users-index + used; NOOIT owner', async () => {
-    const code = await createCode();
-    const r = await run('redeemInvite', authVerified('newUser'), { code });
-    assert.strictEqual(r.role, 'trainer');          // nooit owner
-    assert.strictEqual(r.accepted, true);
-    assert.strictEqual(r.teamId, 'teamA');
-    assert.strictEqual(r.clubName, 'Club A');
-
-    const entry = await snapVal('inviteCodes/' + code);
-    assert.strictEqual(entry.used, true);           // code verbruikt
-    assert.strictEqual(await snapVal('teams/teamA/members/newUser'), 'trainer'); // trainer, niet owner
-    assert.strictEqual(await snapVal('users/newUser/teams/teamA'), true);        // index
-  });
-
-  it('tweede redeem van dezelfde code -> already-exists (single-use)', async () => {
-    const code = await createCode();
-    await run('redeemInvite', authVerified('userA'), { code });
-    await rejectsWith(run('redeemInvite', authVerified('userB'), { code }), 'already-exists');
-    assert.strictEqual(await snapVal('teams/teamA/members/userB'), undefined);
-  });
-
-  it('al lid (trainer) redeemt -> already-exists; code blijft unused', async () => {
-    const code = await createCode();
-    await rejectsWith(run('redeemInvite', authVerified('trainerA'), { code }), 'already-exists');
-    assert.strictEqual((await snapVal('inviteCodes/' + code)).used, false);
-  });
-
-  it('al lid (owner) redeemt -> already-exists; code blijft unused', async () => {
-    const code = await createCode();
-    await rejectsWith(run('redeemInvite', authVerified('ownerA'), { code }), 'already-exists');
-    assert.strictEqual((await snapVal('inviteCodes/' + code)).used, false);
-  });
-
-  it('two concurrent redeem attempts: slechts één wint (single-use)', async () => {
-    const code = await createCode();
-    const [a, b] = await Promise.allSettled([
-      run('redeemInvite', authVerified('userA'), { code }),
-      run('redeemInvite', authVerified('userB'), { code })
-    ]);
-    const fates = [a.status, b.status].sort();
-    assert.deepStrictEqual(fates, ['fulfilled', 'rejected']);
-
-    const members = await snapVal('teams/teamA/members');
-    const newTrainers = ['userA', 'userB'].filter((u) => members[u] === 'trainer').length;
-    assert.strictEqual(newTrainers, 1);          // precies één nieuwe trainer
-    assert.strictEqual(members.ownerA, 'owner');  // seed onaangeroerd
-    assert.strictEqual(members.trainerA, 'trainer');
-    // geen van beide is ooit 'owner' geworden:
-    assert.notStrictEqual(members.userA, 'owner');
-    assert.notStrictEqual(members.userB, 'owner');
-  });
-
-  it("geen member wordt 'owner' — invariant na succesvolle redeem", async () => {
-    const code = await createCode();
-    await run('redeemInvite', authVerified('brandNew'), { code });
-    assert.strictEqual((await snapVal('teams/teamA/members')).brandNew, 'trainer');
-  });
-
-  // --- Regression tests for path-scoped transaction fix ---
-
-  it('root-level write does not break redeemInvite (path-scoped txn)', async () => {
-    // Simulates a concurrent write to /team that would cause a root-level
-    // transaction conflict in the old code. Path-scoped txn is unaffected.
-    const code = await createCode();
-    await mock.ref('team').set({ display: true });
-    const r = await run('redeemInvite', authVerified('invitee2'), { code });
+    assert.strictEqual(r.uid, 'newTrainer');
+    assert.strictEqual(r.email, 'newtrainer@test.nl');
     assert.strictEqual(r.role, 'trainer');
-    assert.strictEqual(r.accepted, true);
-    assert.strictEqual((await snapVal('inviteCodes/' + code)).used, true);
-    assert.strictEqual(await snapVal('teams/teamA/members/invitee2'), 'trainer');
-    assert.strictEqual(await snapVal('users/invitee2/teams/teamA'), true);
-  });
 
-  it('transaction abort (concurrent claim) -> 409 already-exists (al verbruikt), not al-lid', async () => {
-    // Simulates another caller claiming the code between Phase 1 read and
-    // Phase 3 transaction. Old code: catch-all throw gave misleading "al lid".
-    const code = await createCode();
-    const origRef = mock.ref;
-    mock.ref = (path = '') => {
-      const handle = origRef(path);
-      if (path === 'inviteCodes/' + code) {
-        return {
-          once: handle.once,
-          set: handle.set,
-          update: handle.update,
-          transaction: async () => ({
-            committed: false,
-            snapshot: { exists: () => true, val: () => ({ used: false }) }
-          })
-        };
-      }
-      return handle;
-    };
-    await rejectsWith(
-      run('redeemInvite', authVerified('invitee2'), { code }),
-      'already-exists'
-    );
-    // Code must remain unused — no member added
-    assert.strictEqual((await snapVal('inviteCodes/' + code)).used, false);
-    assert.strictEqual(await snapVal('teams/teamA/members/invitee2'), undefined);
-  });
-
-  it('write failure after claim -> rollback code to unused + internal error', async () => {
-    const code = await createCode();
-    const origRef = mock.ref;
-    mock.ref = (path = '') => {
-      const handle = origRef(path);
-      if (path.startsWith('teams/teamA/members/')) {
-        return {
-          once: handle.once,
-          set: async () => { throw new Error('Simulated DB write failure'); },
-          update: handle.update,
-          transaction: handle.transaction
-        };
-      }
-      return handle;
-    };
-    await rejectsWith(
-      run('redeemInvite', authVerified('invitee2'), { code }),
-      'internal'
-    );
-    // Code must be rolled back to used: false
-    assert.strictEqual((await snapVal('inviteCodes/' + code)).used, false);
-    assert.strictEqual(await snapVal('teams/teamA/members/invitee2'), undefined);
-  });
-
-  it('cross-account: creator != redeemer, redeemer becomes trainer (not owner)', async () => {
-    // Mirrors user scenario: rickspronk@hotmail.com creates, DRMverhuur@outlook.com redeems
-    const code = await createCode('teamA', 'ownerA');
-    const r = await run('redeemInvite', authVerified('invitee3'), { code });
-    assert.strictEqual(r.role, 'trainer');
-    assert.strictEqual(r.teamId, 'teamA');
-    assert.strictEqual((await snapVal('teams/teamA/members/invitee3')), 'trainer');
-    assert.strictEqual(await snapVal('users/invitee3/teams/teamA'), true);
-    // Owner remains owner - not demoted
+    assert.strictEqual(await snapVal('teams/teamA/members/newTrainer'), 'trainer');
+    assert.strictEqual(await snapVal('users/newTrainer/teams/teamA'), true);
+    // Owner blijft owner
     assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), 'owner');
-    // Code consumed
-    assert.strictEqual((await snapVal('inviteCodes/' + code)).used, true);
+  });
+  it('dubbel toevoegen -> already-exists; geen duplicate', async () => {
+    await run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' });
+    await rejectsWith(run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' }), 'already-exists');
+    // Nog steeds exact één member
+    const members = await snapVal('teams/teamA/members');
+    const trainerUids = Object.entries(members).filter(([, r]) => r === 'trainer').map(([k]) => k).sort();
+    assert.deepStrictEqual(trainerUids, ['newTrainer', 'trainerA']);
+  });
+  it('owner kan bestaande trainer verwijderen', async () => {
+    await run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' });
+    const r = await run('removeTrainer', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' });
+    assert.strictEqual(r.teamId, 'teamA');
+    assert.strictEqual(r.uid, 'newTrainer');
+    assert.strictEqual(r.role, 'removed');
+    assert.strictEqual(await snapVal('teams/teamA/members/newTrainer'), null);
+    assert.strictEqual(await snapVal('users/newTrainer/teams/teamA'), null);
+    // Owner en seed-trainer onaangeroerd
+    assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), 'owner');
+    assert.strictEqual(await snapVal('teams/teamA/members/trainerA'), 'trainer');
   });
 });
 
 // ===========================================================================
-describe('Fase 2C-3: invariant — inviteCodes blijft admin-only via deze functie', () => {
-  it('handlers lezen/schrijven inviteCodes alleen via Admin (mock ref)', async () => {
-    // Na aanmaak bestaat er precies één inviteCodes-entry (admin-only write).
-    const r = await run('createInviteCode', authVerified('ownerA'), { teamId: 'teamA' });
-    const all = await snapVal('inviteCodes');
-    const keys = Object.keys(all || {}).filter((k) => k === r.code);
-    assert.strictEqual(keys.length, 1);
-    assert.strictEqual(all[r.code].used, false);
+describe('removeTrainer', () => {
+  it('geen auth -> unauthenticated', async () => {
+    await rejectsWith(run('removeTrainer', undefined, { teamId: 'teamA', email: 'trainer@test.nl' }), 'unauthenticated');
+  });
+  it('anoniem -> permission-denied', async () => {
+    await rejectsWith(run('removeTrainer', authAnon('a1'), { teamId: 'teamA', email: 'trainer@test.nl' }), 'permission-denied');
+  });
+  it('trainer probeert removeTrainer -> permission-denied', async () => {
+    await rejectsWith(run('removeTrainer', authVerified('trainerA'), { teamId: 'teamA', email: 'trainer@test.nl' }), 'permission-denied');
+  });
+  it('owner probeert niet-angelid te verwijderen -> not-found', async () => {
+    await rejectsWith(run('removeTrainer', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' }), 'not-found');
+  });
+  it('admin blijft owner als trainer wordt verwijderd', async () => {
+    // Seed-trainerA verwijderen via owner
+    const r = await run('removeTrainer', authVerified('ownerA'), { teamId: 'teamA', email: 'trainer@test.nl' });
+    assert.strictEqual(r.role, 'removed');
+    assert.strictEqual(await snapVal('teams/teamA/members/trainerA'), null);
+    assert.strictEqual(await snapVal('users/trainerA/teams/teamA'), null);
+    assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), 'owner');
+  });
+});
+
+// ===========================================================================
+describe('Fase 2C-3: invariant — owner blijft owner, trainer blijft trainer', () => {
+  it('addTrainerByEmail schrijft members + users-index; nooit role=owner', async () => {
+    await run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' });
+    assert.strictEqual(await snapVal('teams/teamA/members/newTrainer'), 'trainer');
+    assert.notStrictEqual(await snapVal('teams/teamA/members/newTrainer'), 'owner');
+    assert.strictEqual(await snapVal('users/newTrainer/teams/teamA'), true);
+  });
+
+  it('seed data (ownerA=owner, trainerA=trainer) blijft onaangeroerd', async () => {
+    await run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' });
+    await run('removeTrainer', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' });
+    assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), 'owner');
+    assert.strictEqual(await snapVal('teams/teamA/members/trainerA'), 'trainer');
   });
 });
