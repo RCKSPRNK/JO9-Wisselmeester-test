@@ -1,7 +1,7 @@
 {
   "name": "wisselmeester-invite-functions",
   "version": "0.1.0",
-  "description": "Cloud Functions basis voor Fase 2C-3 (Trainer uitnodigen) - Wisselmeester TEST",
+  "description": "Cloud Functions basis voor Fase 2C-3 (Trainer beheren via e-mailadres) - Wisselmeester TEST",
   "type": "commonjs",
   "main": "index.js",
   "engines": {

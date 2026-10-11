@@ -4698,10 +4698,10 @@ function watchPlayersFromFirebase(onCancel) {
     // =========================================================
 
     // =========================================================
-    // CLOUD FUNCTIONS (Fase 2C-3): "Trainer uitnodigen"
+    // CLOUD FUNCTIONS (Fase 2C-3): "Trainer beheren via e-mailadres"
     //
-    // Clientschrijf naar inviteCodes is per RTDB-rules onmogelijk
-    // (.read/.write = false); de client roept ALLEEN deze callables.
+    // Clientschrijf naar teams/{teamId}/members is per RTDB-rules
+    // beperkt tot owner/trainer zelf; de client roept ALLEEN deze callables.
     // De functies schrijven met Admin SDK (zie functions/index.js).
     // Region: europe-west1 (past data-localiteit aan de RTDB). Als de
     // deploy-region wijzigt, pas INVITE_FN_REGION aan of zet functions.region
