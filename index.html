@@ -958,6 +958,17 @@ button:hover {
             <button type="submit" class="primary" id="trainerByEmailBtn">Toevoegen</button>
         </form>
 
+        <!-- Trainer overzicht (alleen zichtbaar voor owner) -->
+        <h4 id="trainerListHeading" style="margin-top:18px; display:none;">Trainers van dit team</h4>
+        <div id="trainerList" class="trainer-list" style="display:none;"></div>
+        <div id="trainerListMessage" class="auth-message" style="display:none;"></div>
+
+        <!-- Team verlaten (alle leden zichtbaar) -->
+        <div style="margin-top:18px; padding-top:12px; border-top:1px solid #e0e0e0;">
+            <button type="button" class="secondary" id="leaveTeamBtn">Team verlaten</button>
+            <div id="leaveTeamMessage" class="auth-message" style="display:none;"></div>
+        </div>
+
     </div>
 
 </div>
@@ -4713,7 +4724,9 @@ function watchPlayersFromFirebase(onCancel) {
         "https://" + INVITE_FN_REGION + "-" + firebaseConfig.projectId + ".cloudfunctions.net";
     const inviteCall = {
         addTrainerByEmail: httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/addTrainerByEmail"),
-        removeTrainer:     httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/removeTrainer")
+        removeTrainer:     httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/removeTrainer"),
+        leaveTeam:          httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/leaveTeam"),
+        listTeamMembers:    httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/listTeamMembers")
     };
 
     window.jo9Firebase = {
@@ -4732,6 +4745,12 @@ function watchPlayersFromFirebase(onCancel) {
 
         removeTrainer:
             inviteCall.removeTrainer,
+
+        leaveTeam:
+            inviteCall.leaveTeam,
+
+        listTeamMembers:
+            inviteCall.listTeamMembers,
 
         savePlayersToFirebase:
             savePlayersToFirebase,
@@ -6674,9 +6693,13 @@ function watchPlayersFromFirebase(onCancel) {
         ownerCheckTeamId = null;
         trainerByEmailGen++;
         trainerByEmailBusy = false;
+        trainerListGen++;
         authEl("trainerByEmailInput").value = "";
         showTrainerByEmailMessage("", "");
+        showTrainerListMessage("", "");
+        showLeaveTeamMessage("", "");
         renderTrainerByEmail();
+        renderTrainerList();
         renderInviteSections();
     }
 
@@ -6693,6 +6716,14 @@ function watchPlayersFromFirebase(onCancel) {
             && !!activeContext.teamId
             && activeIsOwner;
         authEl("trainerByEmailSection").style.display = showByEmail ? "block" : "none";
+        // Render de trainer-lijst wanneeer zichtbaar (owner-only)
+        if (showByEmail) {
+            renderTrainerList();
+        } else {
+            authEl("trainerList").innerHTML = "";
+            authEl("trainerListHeading").style.display = "none";
+            authEl("trainerList").style.display = "none";
+        }
     }
 
     // ---- vertaling server-errors naar begrijpelijk Nederlands ----
@@ -6774,6 +6805,141 @@ function watchPlayersFromFirebase(onCancel) {
         }
     }
 
+    // ---- Trainer overzicht (owner) en team verlaten (alle leden) ----
+    let trainerListGen = 0;
+
+    function showTrainerListMessage(type, text) {
+        const box = authEl("trainerListMessage");
+        if (!text) { box.style.display = "none"; return; }
+        box.className = "auth-message " + type;
+        box.textContent = text;
+        box.style.display = "block";
+    }
+
+    function showLeaveTeamMessage(type, text) {
+        const box = authEl("leaveTeamMessage");
+        if (!text) { box.style.display = "none"; return; }
+        box.className = "auth-message " + type;
+        box.textContent = text;
+        box.style.display = "block";
+    }
+
+    async function renderTrainerList() {
+        const user = auth.currentUser;
+        const teamId = activeContext.mode === "team" ? activeContext.teamId : null;
+        const token = ++trainerListGen;
+
+        authEl("trainerListHeading").style.display = activeIsOwner ? "block" : "none";
+        authEl("trainerList").style.display = activeIsOwner ? "block" : "none";
+        showTrainerListMessage("", "");
+
+        if (!activeIsOwner || !teamId) {
+            authEl("trainerList").innerHTML = "";
+            return;
+        }
+
+        try {
+            const res = await inviteCall.listTeamMembers({ teamId: teamId });
+            if (trainerListGen !== token) return;  // stale
+
+            const members = res.data.members || [];
+            const currentUid = user.uid;
+
+            const html = members.map(function (m) {
+                if (m.uid === currentUid) return "";  // eigen account niet tonen
+                const isOwner = m.role === "owner";
+                const canRemove = !isOwner;  // owner niet zelf via removeTrainer
+                const btn = canRemove
+                    ? '<button type="button" class="secondary small" data-uid="' + m.uid + '" data-email="' + m.email + '" title="Verwijdern">Verwijdern</button>'
+                    : '<span style="font-style:italic;color:#666;">eigenaar</span>';
+                return '<div class="trainer-list-item" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eee;">'
+                    + '<span><strong>' + (m.email || m.uid) + '</strong> <span style="font-size:12px;color:#666;">(' + m.role + ')</span></span>'
+                    + '<span>' + btn + '</span>'
+                    + '</div>';
+            }).join("");
+
+            authEl("trainerList").innerHTML = html;
+
+            // Event-delegatie voor Verwijdern-knoppen
+            const listEl = authEl("trainerList");
+            listEl.onclick = function (e) {
+                const btn = e.target.closest("button[data-uid]");
+                if (btn) {
+                    e.preventDefault();
+                    doRemoveTrainerByEmail(btn.getAttribute("data-email"));
+                }
+            };
+        } catch (error) {
+            if (trainerListGen !== token) return;
+            showTrainerListMessage("error", inviteErrorMessage(error));
+        }
+    }
+
+    async function doRemoveTrainerByEmail(email) {
+        if (!email) return;
+        if (!confirm("Trainer '" + email + "' verwijderen van dit team?")) return;
+
+        const user = auth.currentUser;
+        if (!user || user.isAnonymous || !user.emailVerified) return;
+        const teamId = activeContext.mode === "team" ? activeContext.teamId : null;
+        if (!teamId || !activeIsOwner) {
+            showTrainerListMessage("error", "Alleen de eigenaar kan trainers verwijderen.");
+            return;
+        }
+
+        const token = ++trainerListGen;
+        trainerByEmailBusy = true;
+        renderTrainerByEmail();
+        showTrainerListMessage("", "");
+
+        try {
+            await inviteCall.removeTrainer({ teamId: teamId, email: email });
+            if (trainerListGen !== token) return;
+            showTrainerListMessage("success", "Trainer " + email + " verwijderd.");
+            renderTrainerList();
+        } catch (error) {
+            if (trainerListGen !== token) return;
+            showTrainerListMessage("error", inviteErrorMessage(error));
+        } finally {
+            if (trainerListGen === token) {
+                trainerByEmailBusy = false;
+                renderTrainerByEmail();
+            }
+        }
+    }
+
+    async function doLeaveTeam() {
+        const user = auth.currentUser;
+        if (!user || user.isAnonymous || !user.emailVerified) return;
+        const teamId = activeContext.mode === "team" ? activeContext.teamId : null;
+        if (!teamId) return;
+
+        const teamName = (teamsState.teams.find(t => t.id === teamId) || {}).teamName || teamId;
+        if (!confirm("Weet je zeker dat je team '" + teamName + "' wilt verlaten?")) return;
+
+        showLeaveTeamMessage("", "");
+        try {
+            const res = await inviteCall.leaveTeam({ teamId: teamId });
+            if (res.data && res.data.transferred) {
+                showLeaveTeamMessage("success",
+                    "Jij was de eigenaar. Eigenaarrecht is overgegaan aan de langst aangesloten trainer.");
+            } else {
+                showLeaveTeamMessage("success", "Je hebt het team verlaten.");
+            }
+            resetContextState();
+            await refreshTeams(user);
+            const teamIdStr = String(teamId);
+            const ctx = activeContext;
+            if (ctx.mode === "team" && ctx.teamId === teamIdStr) {
+                const other = teamsState.teams.find(t => String(t.id) !== teamIdStr);
+                if (other) { selectTeam(other.id); }
+                else { switchToPicker(); }
+            }
+        } catch (error) {
+            showLeaveTeamMessage("error", inviteErrorMessage(error));
+        }
+    }
+
     // ---- owner-status van actief team (alleen eigen rol lezen) ----
     async function refreshInviteOwnerStatus() {
         const user = auth.currentUser;
@@ -6818,6 +6984,7 @@ function watchPlayersFromFirebase(onCancel) {
 
     // Event-bindungen (DOM).
     authEl("trainerByEmailForm").addEventListener("submit", doAddTrainerByEmail);
+    authEl("leaveTeamBtn").addEventListener("click", doLeaveTeam);
 
 </script>
 <div id="lineupModal" class="lineup-modal" style="display:none;">

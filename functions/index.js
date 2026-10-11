@@ -234,6 +234,138 @@ exports.removeTrainer = onCall({ region: 'europe-west1' }, async (request) => {
 });
 
 /*
+ * List team members with roles + emails (owner-only via Admin Auth SDK).
+ * Client kan members lezen (rules: member can read teams/{teamId}),
+ * maar niet emails van andere gebruikers (users/{uid}/email is self-only).
+ */
+exports.listTeamMembers = onCall({ region: 'europe-west1' }, async (request) => {
+  const callerUid = requireVerifiedAccount(request);
+  const teamId = request.data && request.data.teamId;
+
+  if (!teamId || !isValidTeamId(teamId)) {
+    throw new HttpsError('invalid-argument', 'Ongeldig team.');
+  }
+
+  const db = getDb();
+  const auth = getAuthInstance();
+
+  // Verplicht owner; anders kan een trainer de lijst zien — niet per design.
+  if (!(await verifyOwner(db, teamId, callerUid))) {
+    throw new HttpsError('permission-denied', 'Alleen de owner kan leden bekijken.');
+  }
+
+  const membersSnap = await db.ref('teams/' + teamId + '/members').once('value');
+  const members = membersSnap.val() || {};
+
+  const result = [];
+  for (const [uid, role] of Object.entries(members)) {
+    let email = '';
+    try {
+      const user = await auth.getUser(uid);
+      email = user.email || '';
+    } catch (e) {
+      // gebruiker bestaat niet meer in Auth — skip silently
+    }
+    result.push({ uid: uid, role: role || 'trainer', email: email });
+  }
+
+  return { teamId: teamId, members: result };
+});
+
+/*
+ * Trainer verlaat team / owner-overdracht.
+ *
+ * - trainer: verwijdert members/{uid} en users/{uid}/teams/{teamId}
+ * - owner:    bevordert langst-aangesloten trainer (key-order; geen
+ *             join-timestamp beschikbaar) → owner, verwijdert oude owner.
+ *             Bij geen andere trainer: blocked met failed-precondition.
+ *
+ * Atomic via multi-path update: team is nooit tijdelijk ownerloos.
+ */
+exports.leaveTeam = onCall({ region: 'europe-west1' }, async (request) => {
+  const callerUid = requireVerifiedAccount(request);
+  const teamId = request.data && request.data.teamId;
+
+  if (!teamId || !isValidTeamId(teamId)) {
+    throw new HttpsError('invalid-argument', 'Ongeldig team.');
+  }
+
+  const db = getDb();
+
+  // Check membership (path-scoped read)
+  const snap = await db.ref('teams/' + teamId + '/members/' + callerUid).once('value');
+  if (!snap.exists()) {
+    throw new HttpsError('not-found', 'Je bent geen lid van dit team.');
+  }
+  const role = snap.val();
+
+  if (role === 'owner') {
+    // Find the longest-standing trainer — no join timestamp exists in the
+    // database, so we use key order (deterministic, reliable).
+    const membersSnap = await db.ref('teams/' + teamId + '/members').once('value');
+    const members = membersSnap.val() || {};
+
+    let newOwnerUid = null;
+    for (const uid of Object.keys(members).sort()) {
+      if (uid !== callerUid && members[uid] === 'trainer') {
+        newOwnerUid = uid;
+        break;
+      }
+    }
+
+    if (!newOwnerUid) {
+      // Keep owner in members? No — the user is leaving. Block.
+      // But we must NOT remove the caller yet — we block before any writes.
+      throw new HttpsError(
+        'failed-precondition',
+        'Je bent de enige eigenaar. Voeg eerst een andere trainer toe.'
+      );
+    }
+
+    // Multi-path update: atomic — team never briefly ownerless.
+    const updates = {};
+    updates['teams/' + teamId + '/members/' + newOwnerUid] = 'owner';
+    updates['teams/' + teamId + '/members/' + callerUid] = null;
+    updates['users/' + callerUid + '/teams/' + teamId] = null;
+    // users/{newOwnerUid}/teams/{teamId} already = true (was a trainer member)
+
+    try {
+      await db.ref().update(updates);
+    } catch (e) {
+      throw new HttpsError('internal',
+        'Kon teamoverdracht niet voltooien: ' + (e.message || e.code));
+    }
+
+    return {
+      teamId: teamId,
+      uid: callerUid,
+      role: 'owner',
+      transferred: true,
+      newOwnerId: newOwnerUid
+    };
+  }
+
+  // Trainer leaving (owner stays)
+  const updates = {};
+  updates['teams/' + teamId + '/members/' + callerUid] = null;
+  updates['users/' + callerUid + '/teams/' + teamId] = null;
+
+  try {
+    await db.ref().update(updates);
+  } catch (e) {
+    throw new HttpsError('internal',
+      'Kon lidmaatschap niet verwijderen: ' + (e.message || e.code));
+  }
+
+  return {
+    teamId: teamId,
+    uid: callerUid,
+    role: 'trainer',
+    transferred: false
+  };
+});
+
+/*
  * ---------------------------------------------------------------------------
  * Mock‑infrastructuur (lokale unit‑tests; in runtime is dit echte Admin SDK)
  * ---------------------------------------------------------------------------

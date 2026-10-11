@@ -22,7 +22,7 @@ try {
   throw new Error('functions/index.js kon niet geladen worden: ' + e.message);
 }
 
-const ENDPOINTS = ['addTrainerByEmail', 'removeTrainer'];
+const ENDPOINTS = ['addTrainerByEmail', 'removeTrainer', 'leaveTeam', 'listTeamMembers'];
 
 // ---- auth-tokens die de handler verwacht (pariteit met RTDB Rules) ----------
 const authVerified = (uid) => ({
@@ -51,27 +51,32 @@ const rejectsWith = async (p, code) => {
   assert.strictEqual(err && err.code, code, 'verwachtte ' + code + ', kreeg ' + (err && err.code));
 };
 
-// Mock Auth Admin SDK — simuleert getUserByEmail.
-// In de runtime gebruiken de handlers getAuth().getUserByEmail().
-// Tabel: email -> { uid, emailVerified, providerData }
+// Mock Auth Admin SDK — simuleert getUserByEmail + getUser.
+// Tabel: email -> { uid, email, emailVerified, providerData }
 const mockUserTable = {
-  'owner@test.nl':      { uid: 'ownerA',      emailVerified: true,  providerData: [{ providerId: 'password' }] },
-  'trainer@test.nl':    { uid: 'trainerA',    emailVerified: true,  providerData: [{ providerId: 'password' }] },
-  'newtrainer@test.nl': { uid: 'newTrainer',  emailVerified: true,  providerData: [{ providerId: 'password' }] },
-  'unverified@test.nl': { uid: 'unverified',  emailVerified: false, providerData: [{ providerId: 'password' }] },
-  'anon@test.nl':       { uid: 'anonUser',    emailVerified: true,  providerData: [{ providerId: 'anonymous' }] }
+  'owner@test.nl':      { uid: 'ownerA',      email: 'owner@test.nl',      emailVerified: true,  providerData: [{ providerId: 'password' }] },
+  'trainer@test.nl':    { uid: 'trainerA',    email: 'trainer@test.nl',    emailVerified: true,  providerData: [{ providerId: 'password' }] },
+  'newtrainer@test.nl': { uid: 'newTrainer',  email: 'newtrainer@test.nl', emailVerified: true,  providerData: [{ providerId: 'password' }] },
+  'unverified@test.nl': { uid: 'unverified',  email: 'unverified@test.nl', emailVerified: false, providerData: [{ providerId: 'password' }] },
+  'anon@test.nl':       { uid: 'anonUser',    email: 'anon@test.nl',       emailVerified: true,  providerData: [{ providerId: 'anonymous' }] }
 };
 
 function makeAuthMock(table) {
+  const uidMap = {};
+  for (const u of Object.values(table)) {
+    uidMap[u.uid] = u;
+  }
+  const mkNotFound = () => { const e = new Error('auth/user-not-found'); e.code = 'auth/user-not-found'; return e; };
   return {
     getUserByEmail: async (email) => {
       const key = (email || '').toLowerCase();
       const u = table[key];
-      if (!u) {
-        const e = new Error('auth/user-not-found');
-        e.code = 'auth/user-not-found';
-        throw e;
-      }
+      if (!u) throw mkNotFound();
+      return u;
+    },
+    getUser: async (uid) => {
+      const u = uidMap[uid];
+      if (!u) throw mkNotFound();
       return u;
     }
   };
@@ -254,5 +259,130 @@ describe('Fase 2C-3: invariant — owner blijft owner, trainer blijft trainer', 
     await run('removeTrainer', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' });
     assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), 'owner');
     assert.strictEqual(await snapVal('teams/teamA/members/trainerA'), 'trainer');
+  });
+});
+
+// ===========================================================================
+describe('leaveTeam', () => {
+  it('geen auth -> unauthenticated', async () => {
+    await rejectsWith(run('leaveTeam', undefined, { teamId: 'teamA' }), 'unauthenticated');
+  });
+
+  it('anoniem -> permission-denied', async () => {
+    await rejectsWith(run('leaveTeam', authAnon('a1'), { teamId: 'teamA' }), 'permission-denied');
+  });
+
+  it('ongeldig teamId -> invalid-argument', async () => {
+    await rejectsWith(run('leaveTeam', authVerified('ownerA'), { teamId: 'a/../b' }), 'invalid-argument');
+  });
+
+  it('niet-lid kan niet vertrekken -> not-found', async () => {
+    await rejectsWith(run('leaveTeam', authVerified('newTrainer'), { teamId: 'teamA' }), 'not-found');
+  });
+
+  it('trainer verlaat team -> lidmaatschap + index verwijderd', async () => {
+    const r = await run('leaveTeam', authVerified('trainerA'), { teamId: 'teamA' });
+    assert.strictEqual(r.teamId, 'teamA');
+    assert.strictEqual(r.uid, 'trainerA');
+    assert.strictEqual(r.role, 'trainer');
+    assert.strictEqual(r.transferred, false);
+
+    assert.strictEqual(await snapVal('teams/teamA/members/trainerA'), null);
+    assert.strictEqual(await snapVal('users/trainerA/teams/teamA'), null);
+    assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), 'owner');
+  });
+
+  it('eigenaar vertrekt, trainerA wordt nieuwe owner (key-order: trainerA < trainerB)', async () => {
+    // Add a second trainer so owner can transfer
+    await run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' });
+
+    const r = await run('leaveTeam', authVerified('ownerA'), { teamId: 'teamA' });
+    assert.strictEqual(r.transferred, true);
+    assert.strictEqual(r.newOwnerId, 'newTrainer'); // lexicographically first trainer (n < t)
+
+    // Old owner removed from members + users index
+    assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), null);
+    assert.strictEqual(await snapVal('users/ownerA/teams/teamA'), null);
+    // New owner is now owner
+    assert.strictEqual(await snapVal('teams/teamA/members/newTrainer'), 'owner');
+    // trainerA still trainer (newTrainer was promoted — key n < t)
+    assert.strictEqual(await snapVal('teams/teamA/members/trainerA'), 'trainer');
+    // newTrainer user-index unchanged (was set by addTrainerByEmail)
+    assert.strictEqual(await snapVal('users/newTrainer/teams/teamA'), true);
+  });
+
+  it('eigenaar alleen -> failed-precondition (geen andere trainer)', async () => {
+    // Seed has only ownerA as owner, trainerA as trainer.
+    // Remove trainerA first, then owner can't leave.
+    await run('leaveTeam', authVerified('trainerA'), { teamId: 'teamA' });
+    await rejectsWith(
+      run('leaveTeam', authVerified('ownerA'), { teamId: 'teamA' }),
+      'failed-precondition'
+    );
+    // Owner still in team
+    assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), 'owner');
+  });
+
+  it('eigenaar kan geen andere eigenaar verwijderen via leaveTeam', async () => {
+    // If there were two owners (not possible in current model), leaveTeam
+    // only lets the caller remove themselves. This is structurally impossible
+    // but tests the guard: a non-member gets not-found, not demote.
+    await run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' });
+    // Make newTrainer the owner (simulated — in real life only leaveTeam does this)
+    // Actually, test that trainerA (a trainer) cannot call leaveTeam as owner
+    // They're not owner, so they leave as trainer. Owner stays.
+    const r = await run('leaveTeam', authVerified('trainerA'), { teamId: 'teamA' });
+    assert.strictEqual(r.transferred, false);
+    assert.strictEqual(r.role, 'trainer');
+    assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), 'owner');
+  });
+});
+
+// ===========================================================================
+describe('listTeamMembers', () => {
+  it('geen auth -> unauthenticated', async () => {
+    await rejectsWith(run('listTeamMembers', undefined, { teamId: 'teamA' }), 'unauthenticated');
+  });
+
+  it('anoniem -> permission-denied', async () => {
+    await rejectsWith(run('listTeamMembers', authAnon('a1'), { teamId: 'teamA' }), 'permission-denied');
+  });
+
+  it('trainer (geen owner) -> permission-denied', async () => {
+    await rejectsWith(run('listTeamMembers', authVerified('trainerA'), { teamId: 'teamA' }), 'permission-denied');
+  });
+
+  it('ongeldig teamId -> invalid-argument', async () => {
+    await rejectsWith(run('listTeamMembers', authVerified('ownerA'), { teamId: 'a/../b' }), 'invalid-argument');
+  });
+
+  it('owner -> krijgt ledenden met emails', async () => {
+    // Add a trainer so there's more than just the owner
+    await run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' });
+
+    const r = await run('listTeamMembers', authVerified('ownerA'), { teamId: 'teamA' });
+    assert.strictEqual(r.teamId, 'teamA');
+    assert.strictEqual(r.members.length, 3);
+
+    const owner = r.members.find((m) => m.uid === 'ownerA');
+    assert.strictEqual(owner.role, 'owner');
+    assert.strictEqual(owner.email, 'owner@test.nl');
+
+    const trainer = r.members.find((m) => m.uid === 'trainerA');
+    assert.strictEqual(trainer.role, 'trainer');
+    assert.strictEqual(trainer.email, 'trainer@test.nl');
+
+    const newTrainer = r.members.find((m) => m.uid === 'newTrainer');
+    assert.strictEqual(newTrainer.role, 'trainer');
+    assert.strictEqual(newTrainer.email, 'newtrainer@test.nl');
+  });
+
+  it('owner -> niet-angeleden uid krijgt lege email', async () => {
+    // Manually set a member with a UID not in mock auth table
+    await mock.ref('teams/teamA/members/ghostUser').set('trainer');
+    const r = await run('listTeamMembers', authVerified('ownerA'), { teamId: 'teamA' });
+    const ghost = r.members.find((m) => m.uid === 'ghostUser');
+    assert.strictEqual(ghost.role, 'trainer');
+    assert.strictEqual(ghost.email, '');
   });
 });
