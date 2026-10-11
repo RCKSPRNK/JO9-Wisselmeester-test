@@ -968,6 +968,7 @@ button:hover {
     <!-- Team verlaten (alle leden zichtbaar) -->
     <div id="leaveTeamSection" style="margin-top:18px; padding-top:12px; border-top:1px solid #e0e0e0; display:none;">
         <button type="button" class="secondary" id="leaveTeamBtn">Team verlaten</button>
+        <button type="button" class="secondary" id="deleteTeamBtn" style="display:none;">🗑️ Team verwijderen</button>
         <div id="leaveTeamMessage" class="auth-message" style="display:none;"></div>
     </div>
 
@@ -1139,34 +1140,9 @@ button:hover {
         </button>
 
     </div>
-
-    <button
-    type="button"
-    class="management-toggle"
-    onclick="toggleSeasonReset()"
->
-    <span>🔄 Seizoen resetten</span>
-    <span id="seasonResetArrow">▶</span>
-</button>
-
-    <div
-        id="seasonResetContent"
-        style="display:none;"
-    >
-
-        <p class="small">
-            Klaar voor een nieuw seizoen? Zet alle speeltijd,
-            voordeelgeschiedenis en wedstrijdgegevens terug naar nul.
-        </p>
-
-        <button
-            class="secondary"
-            onclick="resetSeason()"
-        >
-            🔄 SEIZOEN RESETTEN
-        </button>
-
-    </div>
+    <!-- "Seizoen resetten" is volledig verwijderd per wens -->
+</div>
+<!-- Einde beheerkaart -->
 
 </div>
 
@@ -3487,31 +3463,6 @@ function togglePlayerManagement() {
    SEIZOEN RESET UITKLAPPEN
    ========================================================= */
 
-function toggleSeasonReset() {
-
-    const content =
-        document.getElementById(
-            "seasonResetContent"
-        );
-
-    const arrow =
-        document.getElementById(
-            "seasonResetArrow"
-        );
-
-    if (content.style.display === "none") {
-
-        content.style.display = "block";
-        arrow.textContent = "▼";
-
-    } else {
-
-        content.style.display = "none";
-        arrow.textContent = "▶";
-
-    }
-
-}
 function toggleMatches() {
 
     const content =
@@ -4250,125 +4201,6 @@ function addPlayer() {
    SEIZOENSRESET
    ========================================================= */
 
-async function resetSeason() {
-
-    // Een teamomgeving is een seizoen: nooit resetten/wissen.
-    if (activeContext.mode !== "legacy") {
-        alert(
-            "Seizoen resetten is niet beschikbaar in een teamomgeving.\n\n" +
-            "Er is niets gewist."
-        );
-        return;
-    }
-
-    const confirmed =
-        confirm(
-            "⚠️ Weet je het zeker?\n\n" +
-            "Alle historische speeltijd, " +
-            "voordeelgeschiedenis en wedstrijdgegevens " +
-            "worden verwijderd.\n\n" +
-            "De spelers blijven behouden.\n\n" +
-            "Deze actie kan niet ongedaan worden gemaakt."
-        );
-
-    if (!confirmed) {
-        return;
-    }
-
-
-    // =========================================================
-    // WEDSTRIJDEN EERST IN FIREBASE WISSEN
-    // =========================================================
-
-    if (
-        window.jo9Firebase &&
-        window.jo9Firebase.saveMatchesToFirebase
-    ) {
-
-        const firebaseReset =
-            await window.jo9Firebase.saveMatchesToFirebase([]);
-
-        if (!firebaseReset) {
-
-            alert(
-                "❌ De seizoensreset is niet uitgevoerd.\n\n" +
-                "De verbinding met Firebase kon de wedstrijdgegevens " +
-                "niet wissen.\n\n" +
-                "Controleer je internetverbinding en probeer het opnieuw."
-            );
-
-            return;
-
-        }
-
-    }
-
-
-    // =========================================================
-    // SPEELTIJD EN VOORDEELGESCHIEDENIS RESETTEN
-    // =========================================================
-
-    players.forEach(player => {
-
-        player.history = 0;
-        player.advantageHistory = [];
-
-    });
-
-
-    // =========================================================
-    // WEDSTRIJDEN LOKAAL RESETTEN
-    // =========================================================
-
-    matches = [];
-
-    localStorage.removeItem(
-        storageKey("matches")
-    );
-
-    localStorage.removeItem(
-        storageKey("match_counter")
-    );
-
-
-    // =========================================================
-    // SPELERS OPSLAAN
-    // =========================================================
-
-    savePlayers();
-
-
-    // =========================================================
-    // SCHERM BIJWERKEN
-    // =========================================================
-
-    renderPlayers();
-
-    renderPlayerManagement();
-
-    renderMatches();
-
-    currentSchedule = null;
-
-
-    document.getElementById(
-        "scheduleSection"
-    ).style.display = "none";
-
-
-    // =========================================================
-    // BEVESTIGING
-    // =========================================================
-
-    alert(
-        "🔄 Het seizoen is gereset!\n\n" +
-        "Alle speeltijden, voordeelgeschiedenis " +
-        "en wedstrijden zijn gewist.\n\n" +
-        "De spelers zijn behouden."
-    );
-
-}
-
 
 /* =========================================================
    START
@@ -4726,7 +4558,8 @@ function watchPlayersFromFirebase(onCancel) {
         addTrainerByEmail: httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/addTrainerByEmail"),
         removeTrainer:     httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/removeTrainer"),
         leaveTeam:          httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/leaveTeam"),
-        listTeamMembers:    httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/listTeamMembers")
+        listTeamMembers:    httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/listTeamMembers"),
+        deleteTeam:         httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/deleteTeam")
     };
 
     window.jo9Firebase = {
@@ -4751,6 +4584,9 @@ function watchPlayersFromFirebase(onCancel) {
 
         listTeamMembers:
             inviteCall.listTeamMembers,
+
+        deleteTeam:
+            inviteCall.deleteTeam,
 
         savePlayersToFirebase:
             savePlayersToFirebase,
@@ -6743,6 +6579,9 @@ function watchPlayersFromFirebase(onCancel) {
         }
         // All members: "Team verlaten" zichtbaar bij actief team
         authEl("leaveTeamSection").style.display = inTeam ? "block" : "none";
+        // Owner-only: "Team verwijderen" knop
+        authEl("deleteTeamBtn").parentElement.style.display =
+            (inTeam && activeIsOwner) ? "block" : "none";
     }
 
     // ---- vertaling server-errors naar begrijpelijk Nederlands ----
@@ -6975,6 +6814,42 @@ function watchPlayersFromFirebase(onCancel) {
         }
     }
 
+    // Complete team deletion — owner only.
+    async function doDeleteTeam() {
+        const user = auth.currentUser;
+        if (!user || user.isAnonymous || !user.emailVerified) return;
+        const teamId = activeContext.mode === "team" ? activeContext.teamId : null;
+        if (!teamId || !activeIsOwner) return;
+
+        const teamName = (teamsState.teams.find(t => t.id === teamId) || {}).teamName || teamId;
+        const confirmed = confirm(
+            "Waarschuwing: alle gegevens worden verwijderd.\n\n" +
+            "Team '" + teamName + "' en ALLE bijbehorende gegevens " +
+            "(wedstrijden, spelers, lidmaatschap) worden volledig verwijderd.\n\n" +
+            "Deze actie kan niet ongedaan worden gemaakt."
+        );
+        if (!confirmed) return;
+
+        showLeaveTeamMessage("", "");
+        try {
+            await inviteCall.deleteTeam({ teamId: teamId });
+            showLeaveTeamMessage("success", "Team '" + teamName + "' is volledig verwijderd.");
+            resetContextState();
+            await refreshTeams(user);
+            const teamIdStr = String(teamId);
+            const ctx = activeContext;
+            if (ctx.mode === "team" && ctx.teamId === teamIdStr) {
+                const other = teamsState.teams.find(t => String(t.id) !== teamIdStr);
+                if (other) { selectTeam(other.id); }
+                else { switchToPicker(); }
+            } else {
+                switchToPicker();
+            }
+        } catch (error) {
+            showLeaveTeamMessage("error", inviteErrorMessage(error));
+        }
+    }
+
     // ---- owner-status van actief team (alleen eigen rol lezen) ----
     async function refreshInviteOwnerStatus() {
         const user = auth.currentUser;
@@ -7020,6 +6895,7 @@ function watchPlayersFromFirebase(onCancel) {
     // Event-bindungen (DOM).
     authEl("trainerByEmailForm").addEventListener("submit", doAddTrainerByEmail);
     authEl("leaveTeamBtn").addEventListener("click", doLeaveTeam);
+    authEl("deleteTeamBtn").addEventListener("click", doDeleteTeam);
 
 </script>
 <div id="lineupModal" class="lineup-modal" style="display:none;">

@@ -22,7 +22,7 @@ try {
   throw new Error('functions/index.js kon niet geladen worden: ' + e.message);
 }
 
-const ENDPOINTS = ['addTrainerByEmail', 'removeTrainer', 'leaveTeam', 'listTeamMembers'];
+const ENDPOINTS = ['addTrainerByEmail', 'removeTrainer', 'leaveTeam', 'listTeamMembers', 'deleteTeam'];
 
 // ---- auth-tokens die de handler verwacht (pariteit met RTDB Rules) ----------
 const authVerified = (uid) => ({
@@ -384,5 +384,79 @@ describe('listTeamMembers', () => {
     const ghost = r.members.find((m) => m.uid === 'ghostUser');
     assert.strictEqual(ghost.role, 'trainer');
     assert.strictEqual(ghost.email, '');
+  });
+});
+
+// ===========================================================================
+describe('deleteTeam', () => {
+  it('geen auth -> unauthenticated', async () => {
+    await rejectsWith(run('deleteTeam', undefined, { teamId: 'teamA' }), 'unauthenticated');
+  });
+
+  it('anoniem -> permission-denied', async () => {
+    await rejectsWith(run('deleteTeam', authAnon('a1'), { teamId: 'teamA' }), 'permission-denied');
+  });
+
+  it('unverified -> permission-denied', async () => {
+    await rejectsWith(run('deleteTeam', authUnverified('u1'), { teamId: 'teamA' }), 'permission-denied');
+  });
+
+  it('trainer (geen owner) -> permission-denied', async () => {
+    await rejectsWith(run('deleteTeam', authVerified('trainerA'), { teamId: 'teamA' }), 'permission-denied');
+  });
+
+  it('ongeldig teamId -> invalid-argument', async () => {
+    await rejectsWith(run('deleteTeam', authVerified('ownerA'), { teamId: 'a/../b' }), 'invalid-argument');
+  });
+
+  it('non-member probeert team te verwijderen -> permission-denied', async () => {
+    await rejectsWith(run('deleteTeam', authVerified('newTrainer'), { teamId: 'teamA' }), 'permission-denied');
+  });
+
+  it('owner -> verwijdert team + alle members + reverse indices', async () => {
+    // Set up reverse indices for seed members
+    await mock.ref('users/ownerA/teams/teamA').set(true);
+    await mock.ref('users/trainerA/teams/teamA').set(true);
+
+    const r = await run('deleteTeam', authVerified('ownerA'), { teamId: 'teamA' });
+    assert.strictEqual(r.teamId, 'teamA');
+    assert.strictEqual(r.deleted, true);
+
+    // Entire team node is gone
+    assert.strictEqual(await snapVal('teams/teamA'), null);
+    // Reverse indices removed
+    assert.strictEqual(await snapVal('users/ownerA/teams/teamA'), null);
+    assert.strictEqual(await snapVal('users/trainerA/teams/teamA'), null);
+  });
+
+  it('owner + extra trainer -> reverse index van beide leden verwijderd', async () => {
+    await run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' });
+    await mock.ref('users/ownerA/teams/teamA').set(true);
+    await mock.ref('users/trainerA/teams/teamA').set(true);
+    await mock.ref('users/newTrainer/teams/teamA').set(true);
+
+    const r = await run('deleteTeam', authVerified('ownerA'), { teamId: 'teamA' });
+    assert.strictEqual(r.deleted, true);
+
+    assert.strictEqual(await snapVal('teams/teamA'), null);
+    assert.strictEqual(await snapVal('users/ownerA/teams/teamA'), null);
+    assert.strictEqual(await snapVal('users/trainerA/teams/teamA'), null);
+    assert.strictEqual(await snapVal('users/newTrainer/teams/teamA'), null);
+  });
+
+  it('team blijft bestaan als andere team verwijderd wordt', async () => {
+    await mock.ref('teams/teamB').set({
+      createdAt: 1,
+      createdBy: 'otherOwner',
+      members: { otherOwner: 'owner', otherTrainer: 'trainer' }
+    });
+    await mock.ref('users/otherOwner/teams/teamB').set(true);
+    await mock.ref('users/otherTrainer/teams/teamB').set(true);
+
+    await run('deleteTeam', authVerified('ownerA'), { teamId: 'teamA' });
+
+    // teamB intact
+    assert.strictEqual(await snapVal('teams/teamB/members/otherOwner'), 'owner');
+    assert.strictEqual(await snapVal('users/otherOwner/teams/teamB'), true);
   });
 });

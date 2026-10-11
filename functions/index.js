@@ -366,6 +366,49 @@ exports.leaveTeam = onCall({ region: 'europe-west1' }, async (request) => {
 });
 
 /*
+ * Complete team deletion — owner only.
+ * Atomically removes teams/{teamId} (members, players, matches, meta)
+ * and clears the reverse-index entry users/{uid}/teams/{teamId}
+ * for every member of the team.
+ */
+exports.deleteTeam = onCall({ region: 'europe-west1' }, async (request) => {
+  const callerUid = requireVerifiedAccount(request);
+  const teamId = request.data && request.data.teamId;
+
+  if (!teamId || !isValidTeamId(teamId)) {
+    throw new HttpsError('invalid-argument', 'Ongeldig team.');
+  }
+
+  const db = getDb();
+
+  // Verify ownership
+  if (!(await verifyOwner(db, teamId, callerUid))) {
+    throw new HttpsError('permission-denied',
+      'Alleen de eigenaar kan een team verwijderen.');
+  }
+
+  // Get all members for reverse-index cleanup
+  const membersSnap = await db.ref('teams/' + teamId + '/members').once('value');
+  const members = membersSnap.val() || {};
+
+  // Atomic multi-path delete: entire team node + reverse indices
+  const updates = {};
+  updates['teams/' + teamId] = null;   // members + players + matches + meta
+  for (const uid of Object.keys(members)) {
+    updates['users/' + uid + '/teams/' + teamId] = null;
+  }
+
+  try {
+    await db.ref().update(updates);
+  } catch (e) {
+    throw new HttpsError('internal',
+      'Kon team niet verwijderen: ' + (e.message || e.code));
+  }
+
+  return { teamId: teamId, deleted: true };
+});
+
+/*
  * ---------------------------------------------------------------------------
  * Mock‑infrastructuur (lokale unit‑tests; in runtime is dit echte Admin SDK)
  * ---------------------------------------------------------------------------
