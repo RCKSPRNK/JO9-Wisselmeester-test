@@ -6728,20 +6728,24 @@ function watchPlayersFromFirebase(onCancel) {
 
     // ---- vertaling server-errors naar begrijpelijk Nederlands ----
     function inviteErrorMessage(error) {
-        const code = error && error.code;
+        const rawCode = error && error.code;
+        // Firebase JS SDK v9+ prefixes callable error codes with "functions/"
+        // (e.g. "functions/permission-denied"). Strip the prefix so the map
+        // below matches regardless of SDK version.
+        const code = rawCode ? rawCode.replace(/^functions\//, "") : rawCode;
         const map = {
-            "invalid-argument": "Deze uitnodigingscode is ongeldig.",
-            "not-found": "Deze uitnodigingscode bestaat niet meer.",
-            "failed-precondition": "Deze uitnodiging is verlopen of al gebruikt.",
+            "invalid-argument": "Ongeldig verzoek. Controleer de invoer.",
+            "not-found": "Niet gevonden.",
+            "failed-precondition": "Deze actie is momenteel niet mogelijk.",
             "already-exists": "Je bent al lid van dit team.",
             "permission-denied": "Je hebt geen toestemming voor deze actie.",
             "unauthenticated": "Log opnieuw in om deze actie uit te voeren.",
             "resource-exhausted": "Tijdelijk geen capaciteit. Probeer het over een minuut.",
             "deadline-exceeded": "De aanvraag duurde te lang. Probeer het opnieuw.",
             "unavailable": "De dienst is even niet beschikbaar. Probeer het opnieuw.",
-            "internal": "Er ging iets mis aan de server. Probeer het opnieuw."
+            "internal": "Er ging iets mis aan de server. Probeer het opnieuwk."
         };
-        return (code && map[code]) || "Er ging iets mis. Probeer het opnieuw.";
+        return (code && map[code]) || "Er ging iets mis. Probeer het opnieuwk.";
     }
 
     // ---- B: owner voegt trainer toe via e-mailadres (callable addTrainerByEmail) ----
