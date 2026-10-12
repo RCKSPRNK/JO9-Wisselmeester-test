@@ -1330,8 +1330,18 @@ function applyBranding() {
     document.getElementById("brandAppName").textContent =
         APP_CONFIG.appName;
 
-    document.getElementById("brandClubTeam").textContent =
-        APP_CONFIG.clubName + " · " + APP_CONFIG.teamName;
+    const brandClubTeam = document.getElementById("brandClubTeam");
+    const user =
+        window.jo9Firebase &&
+        window.jo9Firebase.auth &&
+        window.jo9Firebase.auth.currentUser;
+
+    // Toon club- en teamnaam alleen wanneer er een niet-anoniem account is.
+    // De brandingconfiguratie zelf blijft behouden voor wedstrijdgegevens.
+    brandClubTeam.textContent =
+        user && !user.isAnonymous
+            ? APP_CONFIG.clubName + " · " + APP_CONFIG.teamName
+            : "";
 }
 
 applyBranding();
