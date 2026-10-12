@@ -537,6 +537,33 @@ button:hover {
 
 /* Account / inloggen */
 
+header {
+    position: relative;
+}
+
+.auth-menu-button {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 21px;
+    z-index: 2;
+}
+
+#authCard {
+    position: absolute;
+    top: 90px;
+    right: 12px;
+    width: min(420px, calc(100vw - 24px));
+    z-index: 1000;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
 .auth-toggle {
     width: 100%;
     display: flex;
@@ -764,44 +791,6 @@ button:hover {
     }
 
 }
-
-
-/* JO9 Wisselmeester — styling gebaseerd op het goedgekeurde schermontwerp */
-:root { --wm-red:#d71920; --wm-red-dark:#b90f18; --wm-ink:#101923; --wm-muted:#596575; --wm-navy:#081827; --wm-card:rgba(255,255,255,.94); }
-html { min-height:100%; background:#12261e; }
-body { min-height:100vh; margin:0; color:var(--wm-ink); background-image:linear-gradient(180deg,rgba(5,18,31,.38) 0%,rgba(5,18,31,.12) 36%,rgba(4,20,12,.43) 100%),url("background-stadium.webp"); background-size:cover; background-position:center center; background-repeat:no-repeat; background-attachment:fixed; padding-bottom:94px; }
-body::before { content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; background:linear-gradient(180deg,rgba(5,18,31,.08) 0%,transparent 32%,rgba(4,20,12,.24) 100%); }
-.container { width:100%; max-width:560px; padding:12px 14px 22px; margin:0 auto; }
-header { position:relative; display:grid; grid-template-columns:42px 1fr 42px; align-items:center; gap:10px; color:#fff; background:linear-gradient(110deg,rgba(5,17,28,.97),rgba(15,35,52,.92)); border:1px solid rgba(255,255,255,.13); border-radius:23px; padding:13px 16px; margin:8px 0 18px; box-shadow:0 9px 28px rgba(0,0,0,.27); }
-header::before { content:"⚽"; grid-column:1; grid-row:1 / span 2; font-size:32px; }
-header h1 { grid-column:2; grid-row:1; margin:0; font-size:21px; line-height:1.2; }
-header p.header-team { grid-column:2; grid-row:2; margin:3px 0 0; font-size:12px; font-weight:400; opacity:.9; }
-header p:not(.header-team) { display:none; }
-.card, #scheduleSection { background:var(--wm-card); border:1px solid rgba(255,255,255,.58); border-radius:21px; box-shadow:0 10px 26px rgba(0,0,0,.17); backdrop-filter:blur(8px); padding:20px; margin:0 0 16px; }
-.card h2 { margin-top:0; font-size:24px; letter-spacing:-.3px; }
-.primary, .home-menu-button.is-featured { background:var(--wm-red); border-color:var(--wm-red); color:#fff; }
-.primary { border-radius:13px; font-weight:700; }
-.secondary { border-radius:13px; }
-.home-menu { margin:18px 0; padding:20px; }
-.home-menu h2 { margin:0 0 5px; font-size:27px; }
-.home-menu>p { margin:0 0 16px; }
-.home-menu-grid { display:grid; grid-template-columns:1fr; gap:10px; }
-.home-menu-button { min-height:88px; padding:16px 17px; border:1px solid rgba(225,229,233,.95); border-radius:16px; background:rgba(255,255,255,.97); color:var(--wm-ink); text-align:left; font:inherit; font-size:17px; font-weight:750; cursor:pointer; box-shadow:0 3px 9px rgba(23,33,43,.07); display:grid; grid-template-columns:48px 1fr 18px; align-items:center; column-gap:12px; }
-.home-menu-button span { display:flex; align-items:center; justify-content:center; font-size:27px; grid-row:span 2; }
-.home-menu-button small { display:block; margin-top:4px; font-size:13px; font-weight:400; color:var(--wm-muted); }
-.home-menu-button::after { content:'›'; font-size:29px; font-weight:400; grid-column:3; grid-row:1 / span 2; }
-.home-menu-button:hover { background:#fff; border-color:#c2cbd3; }
-.home-menu-button.is-featured { background:linear-gradient(135deg,#e5232b,var(--wm-red-dark)); color:#fff; border-color:var(--wm-red); }
-.home-menu-button.is-featured small { color:#fff; opacity:.94; }
-.view-back { margin:0 0 14px; border:0; background:rgba(7,23,36,.82); color:#fff; }
-.wm-bottom-nav { position:fixed; z-index:9999; left:50%; bottom:0; transform:translateX(-50%); width:min(100%,560px); display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:3px; padding:7px 6px calc(7px + env(safe-area-inset-bottom)); background:rgba(5,19,30,.97); border-top:1px solid rgba(255,255,255,.17); box-shadow:0 -7px 24px rgba(0,0,0,.25); backdrop-filter:blur(12px); }
-.wm-bottom-nav button { min-width:0; border:0; border-radius:10px; background:transparent; color:#d8e0e8; padding:5px 1px; font:inherit; font-size:10px; line-height:1.15; cursor:pointer; }
-.wm-bottom-nav button span { display:block; font-size:21px; margin-bottom:3px; }
-.wm-bottom-nav button.active { background:var(--wm-red); color:#fff; }
-.match-row { flex-wrap:wrap; }
-@media (min-width:560px) { .container { max-width:650px; padding-top:18px; } .home-menu-grid { grid-template-columns:1fr; } .home-menu-button { min-height:88px; grid-template-columns:48px 1fr 18px; } .home-menu-button span { grid-row:span 2; justify-content:center; } .home-menu-button::after { display:block; } .wm-bottom-nav { width:min(100%,650px); } }
-@media (max-width:380px) { .container { padding-left:9px; padding-right:9px; } .card,#scheduleSection { padding:15px; } .home-menu-button { grid-template-columns:38px 1fr 14px; gap:8px; font-size:15px; padding:13px; } .home-menu-button span { font-size:23px; } }
-
 </style>
 </head>
 
@@ -810,31 +799,16 @@ header p:not(.header-team) { display:none; }
 <div class="container">
 
 <header>
+    <button type="button" class="auth-toggle auth-menu-button" id="authToggle"
+        aria-label="Account openen" title="Account">
+        <span aria-hidden="true">👤</span>
+    </button>
     <h1>⚽ <span id="brandAppName">Wisselmeester</span></h1>
     <p class="header-team" id="brandClubTeam"></p>
     <p>Automatisch en eerlijk wisselschema</p>
 </header>
 
-<div class="card home-menu" id="homeMenu">
-    <h2>Hoofdmenu</h2>
-    <p class="small">Kies wat je wilt doen.</p>
-    <div class="home-menu-grid">
-        <button type="button" class="home-menu-button is-featured" data-view="match"><span>⚽</span>Wedstrijd<small>Nieuwe wedstrijd en wisselschema</small></button>
-        <button type="button" class="home-menu-button" data-view="account"><span>👥</span>Mijn teams<small>Beheer teams, spelers en trainers</small></button>
-        <button type="button" class="home-menu-button" data-view="history"><span>▥</span>Statistieken<small>Speeltijd en eerdere wedstrijden</small></button>
-        <button type="button" class="home-menu-button" data-view="management"><span>⚙</span>Instellingen<small>App-instellingen en beheer</small></button>
-    </div>
-</div>
-
-<div id="accountView" style="display:none;">
-    <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
-
-<div class="card" id="authCard">
-
-    <button type="button" class="auth-toggle" id="authToggle">
-        <span id="authToggleLabel">👤 Account</span>
-        <span id="authArrow">▶</span>
-    </button>
+<div class="card" id="authCard" style="display:none;">
 
     <div class="auth-body" id="authBody" style="display:none;">
 
@@ -1025,10 +999,8 @@ header p:not(.header-team) { display:none; }
     </div>
 
 </div>
-</div><!-- einde accountView -->
 
-<div class="card" id="newMatchCard" style="display:none;">
-    <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
+<div class="card">
 
     <h2>1. Nieuwe wedstrijd</h2>
 
@@ -1089,7 +1061,6 @@ header p:not(.header-team) { display:none; }
 </div>
 
 <div id="scheduleSection" class="card" style="display:none;">
-    <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
     <h2>3. Wisselschema</h2>
 
     <p id="summary" class="small"></p>
@@ -1101,8 +1072,7 @@ header p:not(.header-team) { display:none; }
     </button>
 </div>
 
-<div class="card" id="historyView" style="display:none;">
-    <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
+<div class="card">
 
     <h2>4. 📊 Historische speeltijd</h2>
 
@@ -1141,8 +1111,7 @@ header p:not(.header-team) { display:none; }
 
 </div>
     
-<div class="card" id="matchesView" style="display:none;">
-    <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
+<div class="card">
 
     <h2>5. 🏟️ Wedstrijden</h2>
 
@@ -1165,8 +1134,7 @@ header p:not(.header-team) { display:none; }
     </div>
 
 </div>
-  <div class="card" id="managementView" style="display:none;">
-    <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
+  <div class="card">
 
     <h2>6. ⚙️ Beheer</h2>
 
@@ -1330,18 +1298,8 @@ function applyBranding() {
     document.getElementById("brandAppName").textContent =
         APP_CONFIG.appName;
 
-    const brandClubTeam = document.getElementById("brandClubTeam");
-    const user =
-        window.jo9Firebase &&
-        window.jo9Firebase.auth &&
-        window.jo9Firebase.auth.currentUser;
-
-    // Toon club- en teamnaam alleen wanneer er een niet-anoniem account is.
-    // De brandingconfiguratie zelf blijft behouden voor wedstrijdgegevens.
-    brandClubTeam.textContent =
-        user && !user.isAnonymous
-            ? APP_CONFIG.clubName + " · " + APP_CONFIG.teamName
-            : "";
+    document.getElementById("brandClubTeam").textContent =
+        APP_CONFIG.clubName + " · " + APP_CONFIG.teamName;
 }
 
 applyBranding();
@@ -5190,8 +5148,13 @@ function watchPlayersFromFirebase(onCancel) {
         authEl("authBody").style.display =
             open ? "block" : "none";
 
-        authEl("authArrow").textContent =
-            open ? "▼" : "▶";
+        authEl("authCard").style.display =
+            open ? "block" : "none";
+
+        authEl("authToggle").setAttribute(
+            "aria-expanded",
+            open ? "true" : "false"
+        );
 
     }
 
@@ -5262,12 +5225,14 @@ function watchPlayersFromFirebase(onCancel) {
         authEl("authVerifiedEmail").textContent =
             isAccount ? user.email : "";
 
-        authEl("authToggleLabel").textContent =
+        const accountLabel =
             kind === "out"
-                ? "👤 Account · niet ingelogd"
+                ? "Account · niet ingelogd"
                 : kind === "unverified"
-                    ? "👤 E-mailadres nog niet bevestigd"
-                    : "👤 " + user.email;
+                    ? "E-mailadres nog niet bevestigd"
+                    : "Ingelogd als " + user.email;
+        authEl("authToggle").title = accountLabel;
+        authEl("authToggle").setAttribute("aria-label", accountLabel);
 
         // Bij een nieuwe status waarin actie nodig is,
         // het account-blok openen.
@@ -6966,64 +6931,16 @@ function watchPlayersFromFirebase(onCancel) {
     authEl("deleteTeamBtn").addEventListener("click", doDeleteTeam);
 
 </script>
+<div id="lineupModal" class="lineup-modal" style="display:none;">
 
-<nav class="wm-bottom-nav" aria-label="Hoofdnavigatie">
-    <button type="button" data-view="home" class="active"><span>⌂</span>Home</button>
-    <button type="button" data-view="match"><span>⚽</span>Wedstrijd</button>
-    <button type="button" data-view="account"><span>♟</span>Teams</button>
-    <button type="button" data-view="history"><span>▥</span>Statistieken</button>
-    <button type="button" data-view="management"><span>⚙</span>Instellingen</button>
-</nav>
+    <div class="lineup-modal-content">
 
-<script>
-(function setupHomeMenu() {
-    const viewIds = {
-        match: ["newMatchCard", "scheduleSection"],
-        history: ["historyView"],
-        matches: ["matchesView"],
-        management: ["managementView"],
-        account: ["accountView"]
-    };
+        <h2>⚽ Kies opstelling</h2>
 
-    function showView(view) {
-        const home = document.getElementById("homeMenu");
-        const allViews = ["newMatchCard", "scheduleSection", "historyView", "matchesView", "managementView", "accountView"];
-        if (home) home.style.display = view === "home" ? "block" : "none";
-        allViews.forEach(id => {
-            const el = document.getElementById(id);
-            if (!el) return;
-            if (id === "scheduleSection") {
-                // Laat de bestaande wedstrijdlogica bepalen of het schema zichtbaar is.
-                if (view === "match" && el.dataset.menuHidden !== "true") {
-                    // Geen display forceren: generateSchedule() beheert deze sectie.
-                } else if (view !== "match") {
-                    el.dataset.menuHidden = "true";
-                    el.style.display = "none";
-                }
-                return;
-            }
-            el.style.display = (viewIds[view] || []).includes(id) ? "block" : "none";
-        });
-        if (view === "match") {
-            const schedule = document.getElementById("scheduleSection");
-            if (schedule) {
-                schedule.dataset.menuHidden = "false";
-                // Herstel alleen wanneer een schema eerder is gegenereerd.
-                if (document.getElementById("rounds")?.children.length) schedule.style.display = "block";
-            }
-        }
-        document.querySelectorAll(".wm-bottom-nav [data-view]").forEach(button => {
-            button.classList.toggle("active", button.dataset.view === view);
-        });
-        window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+        <p id="lineupRoundTitle"></p>
 
-    document.querySelectorAll("[data-view]").forEach(button => {
-        button.addEventListener("click", () => showView(button.dataset.view));
-    });
-    showView("home");
-})();
-</script>
+        <div class="football-field">
 
+     
 </body>
 </html>
