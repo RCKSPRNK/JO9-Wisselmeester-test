@@ -1,3 +1,4 @@
+```
 <!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -821,7 +822,7 @@ header p:not(.header-team) { display:none; }
     <div class="home-menu-grid">
         <button type="button" class="home-menu-button is-featured" data-view="match"><span>⚽</span>Wedstrijd<small>Nieuwe wedstrijd en wisselschema</small></button>
         <button type="button" class="home-menu-button" data-view="account"><span>👥</span>Mijn teams<small>Beheer teams, spelers en trainers</small></button>
-        <button type="button" class="home-menu-button" data-view="history"><span>▥</span>Statistieken<small>Speeltijd en eerdere wedstrijden</small></button>
+        <button type="button" class="home-menu-button" data-view="history"><span>▥</span>Wedstrijden &amp; speeltijd<small>Historische speeltijd en gespeelde wedstrijden</small></button>
         <button type="button" class="home-menu-button" data-view="management"><span>⚙</span>Instellingen<small>App-instellingen en beheer</small></button>
     </div>
 </div>
@@ -1028,7 +1029,6 @@ header p:not(.header-team) { display:none; }
 </div>
     
 <div class="card" id="matchesView" style="display:none;">
-    <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
 
     <h2>5. 🏟️ Wedstrijden</h2>
 
@@ -6973,7 +6973,7 @@ function watchPlayersFromFirebase(onCancel) {
     <button type="button" data-view="home" class="active"><span>⌂</span>Home</button>
     <button type="button" data-view="match"><span>⚽</span>Wedstrijd</button>
     <button type="button" data-view="account"><span>♟</span>Teams</button>
-    <button type="button" data-view="history"><span>▥</span>Statistieken</button>
+    <button type="button" data-view="history"><span>▥</span>Wedstrijden &amp; speeltijd</button>
     <button type="button" data-view="management"><span>⚙</span>Instellingen</button>
 </nav>
 
@@ -6981,7 +6981,7 @@ function watchPlayersFromFirebase(onCancel) {
 (function setupHomeMenu() {
     const viewIds = {
         match: ["newMatchCard", "scheduleSection"],
-        history: ["historyView"],
+        history: ["historyView", "matchesView"],
         matches: ["matchesView"],
         management: ["managementView"],
         account: ["accountView"]
@@ -7029,3 +7029,4 @@ function watchPlayersFromFirebase(onCancel) {
 
 </body>
 </html>
+```
