@@ -829,120 +829,6 @@ header p:not(.header-team) { display:none; }
 <div id="accountView" style="display:none;">
     <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
 
-<div class="card" id="authCard">
-
-    <button type="button" class="auth-toggle" id="authToggle">
-        <span id="authToggleLabel">👤 Account</span>
-        <span id="authArrow">▶</span>
-    </button>
-
-    <div class="auth-body" id="authBody" style="display:none;">
-
-        <div id="authMessage" class="auth-message" style="display:none;"></div>
-
-        <!-- Niet ingelogd (of anoniem) -->
-        <div id="authLoggedOut">
-
-            <h2>Welkom bij Wisselmeester</h2>
-
-            <p class="small">
-                Maak een account aan of log in. Zonder account blijft
-                de app werken zoals nu.
-            </p>
-
-            <div class="auth-tabs">
-                <button type="button" class="secondary active" id="authTabLogin">Inloggen</button>
-                <button type="button" class="secondary" id="authTabRegister">Account aanmaken</button>
-            </div>
-
-            <form class="auth-form" id="loginForm" novalidate>
-                <label>
-                    E-mailadres
-                    <input type="email" id="loginEmail" autocomplete="email" inputmode="email">
-                </label>
-                <label>
-                    Wachtwoord
-                    <input type="password" id="loginPassword" autocomplete="current-password">
-                </label>
-                <button type="submit" class="primary" id="loginSubmit">Inloggen</button>
-                <button type="button" class="auth-link" id="showResetForm">Wachtwoord vergeten?</button>
-            </form>
-
-            <form class="auth-form" id="registerForm" style="display:none;" novalidate>
-                <label>
-                    E-mailadres
-                    <input type="email" id="registerEmail" autocomplete="email" inputmode="email">
-                </label>
-                <label>
-                    Wachtwoord (minimaal 6 tekens)
-                    <input type="password" id="registerPassword" autocomplete="new-password">
-                </label>
-                <label>
-                    Wachtwoord opnieuw
-                    <input type="password" id="registerPassword2" autocomplete="new-password">
-                </label>
-                <button type="submit" class="primary" id="registerSubmit">Account aanmaken</button>
-            </form>
-
-            <form class="auth-form" id="resetForm" style="display:none;" novalidate>
-                <h3>Wachtwoord vergeten?</h3>
-                <p class="small">
-                    Vul je e-mailadres in. Je krijgt een e-mail waarmee je
-                    een nieuw wachtwoord kunt kiezen.
-                </p>
-                <label>
-                    E-mailadres
-                    <input type="email" id="resetEmail" autocomplete="email" inputmode="email">
-                </label>
-                <button type="submit" class="primary" id="resetSubmit">Resetmail versturen</button>
-                <button type="button" class="auth-link" id="hideResetForm">Terug naar inloggen</button>
-            </form>
-
-        </div>
-
-        <!-- Ingelogd, e-mail nog niet bevestigd -->
-        <div id="authUnverified" style="display:none;">
-
-            <h2>Bevestig je e-mailadres</h2>
-
-            <p>
-                Je bent aangemeld als
-                <span class="auth-email" id="authUnverifiedEmail"></span>,
-                maar dit e-mailadres is nog niet bevestigd. Open de
-                verificatiemail en klik op de link. Controleer ook je
-                spam.
-            </p>
-
-            <div class="auth-actions">
-                <button type="button" class="primary" id="authCheckVerified">Ik heb mijn e-mail bevestigd</button>
-                <button type="button" class="secondary" id="authResendVerification">Verificatiemail opnieuw versturen</button>
-                <button type="button" class="secondary" id="authLogoutUnverified">Uitloggen</button>
-            </div>
-
-        </div>
-
-        <!-- Ingelogd en bevestigd -->
-        <div id="authVerified" style="display:none;">
-
-            <h2>Ingelogd</h2>
-
-            <p>
-                Aangemeld als
-                <span class="auth-email" id="authVerifiedEmail"></span>
-            </p>
-
-            <p class="small">Je teams staan onder “Mijn teams”.</p>
-
-            <div class="auth-actions">
-                <button type="button" class="secondary" id="authLogoutVerified">Uitloggen</button>
-            </div>
-
-        </div>
-
-    </div>
-
-</div>
-
 <div class="card" id="teamsCard" style="display:none;">
 
     <h2>Mijn teams</h2>
@@ -1167,6 +1053,122 @@ header p:not(.header-team) { display:none; }
 </div>
   <div class="card" id="managementView" style="display:none;">
     <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
+
+    <div class="card" id="authCard">
+
+    <button type="button" class="auth-toggle" id="authToggle">
+        <span id="authToggleLabel">👤 Account</span>
+        <span id="authArrow">▶</span>
+    </button>
+
+    <div class="auth-body" id="authBody" style="display:none;">
+
+        <div id="authMessage" class="auth-message" style="display:none;"></div>
+
+        <!-- Niet ingelogd (of anoniem) -->
+        <div id="authLoggedOut">
+
+            <h2>Welkom bij Wisselmeester</h2>
+
+            <p class="small">
+                Maak een account aan of log in. Zonder account blijft
+                de app werken zoals nu.
+            </p>
+
+            <div class="auth-tabs">
+                <button type="button" class="secondary active" id="authTabLogin">Inloggen</button>
+                <button type="button" class="secondary" id="authTabRegister">Account aanmaken</button>
+            </div>
+
+            <form class="auth-form" id="loginForm" novalidate>
+                <label>
+                    E-mailadres
+                    <input type="email" id="loginEmail" autocomplete="email" inputmode="email">
+                </label>
+                <label>
+                    Wachtwoord
+                    <input type="password" id="loginPassword" autocomplete="current-password">
+                </label>
+                <button type="submit" class="primary" id="loginSubmit">Inloggen</button>
+                <button type="button" class="auth-link" id="showResetForm">Wachtwoord vergeten?</button>
+            </form>
+
+            <form class="auth-form" id="registerForm" style="display:none;" novalidate>
+                <label>
+                    E-mailadres
+                    <input type="email" id="registerEmail" autocomplete="email" inputmode="email">
+                </label>
+                <label>
+                    Wachtwoord (minimaal 6 tekens)
+                    <input type="password" id="registerPassword" autocomplete="new-password">
+                </label>
+                <label>
+                    Wachtwoord opnieuw
+                    <input type="password" id="registerPassword2" autocomplete="new-password">
+                </label>
+                <button type="submit" class="primary" id="registerSubmit">Account aanmaken</button>
+            </form>
+
+            <form class="auth-form" id="resetForm" style="display:none;" novalidate>
+                <h3>Wachtwoord vergeten?</h3>
+                <p class="small">
+                    Vul je e-mailadres in. Je krijgt een e-mail waarmee je
+                    een nieuw wachtwoord kunt kiezen.
+                </p>
+                <label>
+                    E-mailadres
+                    <input type="email" id="resetEmail" autocomplete="email" inputmode="email">
+                </label>
+                <button type="submit" class="primary" id="resetSubmit">Resetmail versturen</button>
+                <button type="button" class="auth-link" id="hideResetForm">Terug naar inloggen</button>
+            </form>
+
+        </div>
+
+        <!-- Ingelogd, e-mail nog niet bevestigd -->
+        <div id="authUnverified" style="display:none;">
+
+            <h2>Bevestig je e-mailadres</h2>
+
+            <p>
+                Je bent aangemeld als
+                <span class="auth-email" id="authUnverifiedEmail"></span>,
+                maar dit e-mailadres is nog niet bevestigd. Open de
+                verificatiemail en klik op de link. Controleer ook je
+                spam.
+            </p>
+
+            <div class="auth-actions">
+                <button type="button" class="primary" id="authCheckVerified">Ik heb mijn e-mail bevestigd</button>
+                <button type="button" class="secondary" id="authResendVerification">Verificatiemail opnieuw versturen</button>
+                <button type="button" class="secondary" id="authLogoutUnverified">Uitloggen</button>
+            </div>
+
+        </div>
+
+        <!-- Ingelogd en bevestigd -->
+        <div id="authVerified" style="display:none;">
+
+            <h2>Ingelogd</h2>
+
+            <p>
+                Aangemeld als
+                <span class="auth-email" id="authVerifiedEmail"></span>
+            </p>
+
+            <p class="small">Je teams staan onder “Mijn teams”.</p>
+
+            <div class="auth-actions">
+                <button type="button" class="secondary" id="authLogoutVerified">Uitloggen</button>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
 
     <h2>6. ⚙️ Beheer</h2>
 
