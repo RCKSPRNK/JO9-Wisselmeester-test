@@ -785,7 +785,8 @@ header p:not(.header-team) { display:none; }
 .primary { border-radius:13px; font-weight:700; }
 .secondary { border-radius:13px; }
 .home-menu { margin:18px 0; padding:20px; }
-.home-menu h2 { margin:0 0 5px; font-size:27px; }
+.home-menu h2 { margin:0 0 5px; font-size:27px; display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+.home-menu h2 #activeTeamName { font-size:13.5px; font-weight:400; text-align:right; overflow-wrap:anywhere; }
 .home-menu>p { margin:0 0 16px; }
 .home-menu-grid { display:grid; grid-template-columns:1fr; gap:10px; }
 .home-menu-button { min-height:88px; padding:16px 17px; border:1px solid rgba(225,229,233,.95); border-radius:16px; background:rgba(255,255,255,.97); color:var(--wm-ink); text-align:left; font:inherit; font-size:17px; font-weight:750; cursor:pointer; box-shadow:0 3px 9px rgba(23,33,43,.07); display:grid; grid-template-columns:48px 1fr 18px; align-items:center; column-gap:12px; }
