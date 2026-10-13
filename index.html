@@ -5684,6 +5684,13 @@ function watchPlayersFromFirebase(onCancel) {
                 ? teamsState.teams.find(t => t.id === activeContext.teamId)
                 : null;
 
+        // Toon naast Hoofdmenu uitsluitend het werkelijk actieve team.
+        // Zonder actieve teamcontext blijft de plek leeg; geen vaste standaardnaam.
+        const activeTeamName = document.getElementById("activeTeamName");
+        if (activeTeamName) {
+            activeTeamName.textContent = meta ? " · " + teamLabel(meta) : "";
+        }
+
         applyTeamBranding(meta || null);
     }
 
