@@ -785,8 +785,7 @@ header p:not(.header-team) { display:none; }
 .primary { border-radius:13px; font-weight:700; }
 .secondary { border-radius:13px; }
 .home-menu { margin:18px 0; padding:20px; }
-.home-menu h2 { margin:0 0 5px; font-size:27px; display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
-.home-menu h2 #activeTeamName { font-size:13.5px; font-weight:400; text-align:right; overflow-wrap:anywhere; }
+.home-menu h2 { margin:0 0 5px; font-size:27px; }
 .home-menu>p { margin:0 0 16px; }
 .home-menu-grid { display:grid; grid-template-columns:1fr; gap:10px; }
 .home-menu-button { min-height:88px; padding:16px 17px; border:1px solid rgba(225,229,233,.95); border-radius:16px; background:rgba(255,255,255,.97); color:var(--wm-ink); text-align:left; font:inherit; font-size:17px; font-weight:750; cursor:pointer; box-shadow:0 3px 9px rgba(23,33,43,.07); display:grid; grid-template-columns:48px 1fr 18px; align-items:center; column-gap:12px; }
@@ -820,7 +819,7 @@ header p:not(.header-team) { display:none; }
 </header>
 
 <div class="card home-menu" id="homeMenu">
-    <h2>Hoofdmenu <span id="activeTeamName"></span></h2>
+    <h2>Hoofdmenu</h2>
     <div class="home-menu-grid">
         <button type="button" class="home-menu-button is-featured" data-view="match"><span>⚽</span>Wedstrijd<small>Nieuwe wedstrijd en wisselschema</small></button>
         <button type="button" class="home-menu-button" data-view="account"><span>👥</span>Mijn teams<small>Beheer teams, spelers en trainers</small></button>
@@ -832,7 +831,7 @@ header p:not(.header-team) { display:none; }
 <div id="accountView" style="display:none;">
     <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
 
-<div class="card" id="teamsCard" style="display:none;">
+<div class="card" id="teamsCard">
 
     <h2>Mijn teams</h2>
 
@@ -875,6 +874,35 @@ header p:not(.header-team) { display:none; }
 
     </form>
 
+    <!-- Team verlaten (alle leden zichtbaar) -->
+    <div id="leaveTeamSection" style="margin-top:18px; padding-top:12px; border-top:1px solid #e0e0e0; display:none;">
+        <button type="button" class="secondary" id="leaveTeamBtn">Team verlaten</button>
+        <button type="button" class="secondary" id="deleteTeamBtn" style="display:none;">🗑️ Team verwijderen</button>
+        <div id="leaveTeamMessage" class="auth-message" style="display:none;"></div>
+    </div>
+
+</div>
+
+<div class="card" id="playerManagementCard">
+    <button type="button" class="management-toggle" onclick="togglePlayerManagement()">
+        <span>👥 Spelers beheren</span>
+        <span id="playerManagementArrow">▶</span>
+    </button>
+
+    <div id="playerManagementContent" style="display:none;">
+        <p class="small">Voeg spelers toe of verwijder spelers uit het team.</p>
+        <div id="managePlayers"></div>
+        <button class="primary" onclick="showAddPlayerForm()">➕ SPELER TOEVOEGEN</button>
+    </div>
+</div>
+
+<div class="card" id="trainerManagementCard">
+    <button type="button" class="management-toggle" onclick="toggleTrainerManagement()">
+        <span>🧑‍🏫 Trainers beheren</span>
+        <span id="trainerManagementArrow">▶</span>
+    </button>
+
+    <div id="trainerManagementContent" style="display:none;">
     <!-- Fase 2C-3: Trainer toevoegen via e-mailadres (alleen owner actief team) -->
     <div id="trainerByEmailSection" class="invite-section" style="display:none;">
 
@@ -906,20 +934,14 @@ header p:not(.header-team) { display:none; }
 
     </div>
 
-    <!-- Team verlaten (alle leden zichtbaar) -->
-    <div id="leaveTeamSection" style="margin-top:18px; padding-top:12px; border-top:1px solid #e0e0e0; display:none;">
-        <button type="button" class="secondary" id="leaveTeamBtn">Team verlaten</button>
-        <button type="button" class="secondary" id="deleteTeamBtn" style="display:none;">🗑️ Team verwijderen</button>
-        <div id="leaveTeamMessage" class="auth-message" style="display:none;"></div>
     </div>
-
 </div>
 </div><!-- einde accountView -->
 
 <div class="card" id="newMatchCard" style="display:none;">
     <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
 
-    <h2>Nieuwe wedstrijd</h2>
+    <h2>1. Nieuwe wedstrijd</h2>
 
     <p class="small">
         Vul eerst de wedstrijdgegevens in en geef daarna aan
@@ -965,7 +987,7 @@ header p:not(.header-team) { display:none; }
 
     </div>
 
-    <h3>Aanwezigheid</h3>
+    <h3>2. Aanwezigheid</h3>
 
     <div id="players" class="players"></div>
 
@@ -993,7 +1015,7 @@ header p:not(.header-team) { display:none; }
 <div class="card" id="historyView" style="display:none;">
     <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
 
-    <h2>📊 Historische speeltijd</h2>
+    <h2>4. 📊 Historische speeltijd</h2>
 
     <button
         type="button"
@@ -1032,7 +1054,7 @@ header p:not(.header-team) { display:none; }
     
 <div class="card" id="matchesView" style="display:none;">
 
-    <h2>🏟️ Wedstrijden</h2>
+    <h2>5. 🏟️ Wedstrijden</h2>
 
     <button
         type="button"
@@ -1170,38 +1192,6 @@ header p:not(.header-team) { display:none; }
 
 </div>
 
-
-
-    <h2>⚙️ Beheer</h2>
-
-    <button
-    type="button"
-    class="management-toggle"
-    onclick="togglePlayerManagement()"
->
-    <span>👥 Spelers beheren</span>
-    <span id="playerManagementArrow">▶</span>
-</button>
-
-    <div
-        id="playerManagementContent"
-        style="display:none;"
-    >
-
-        <p class="small">
-            Voeg spelers toe of verwijder spelers uit het team.
-        </p>
-
-        <div id="managePlayers"></div>
-
-        <button
-            class="primary"
-            onclick="showAddPlayerForm()"
-        >
-            ➕ SPELER TOEVOEGEN
-        </button>
-
-    </div>
     <!-- Season reset fully removed (incl. resetSeason + toggleSeasonReset) -->
 </div>
 <!-- Einde beheerkaart -->
@@ -3530,6 +3520,20 @@ function togglePlayerManagement() {
 
 }
 
+function toggleTrainerManagement() {
+    const content = document.getElementById("trainerManagementContent");
+    const arrow = document.getElementById("trainerManagementArrow");
+    if (!content || !arrow) return;
+
+    if (content.style.display === "none") {
+        content.style.display = "block";
+        arrow.textContent = "▼";
+    } else {
+        content.style.display = "none";
+        arrow.textContent = "▶";
+    }
+}
+
 
 /* =========================================================
    SEIZOEN RESET UITKLAPPEN
@@ -5685,13 +5689,6 @@ function watchPlayersFromFirebase(onCancel) {
                 ? teamsState.teams.find(t => t.id === activeContext.teamId)
                 : null;
 
-        // Toon naast Hoofdmenu uitsluitend het werkelijk actieve team.
-        // Zonder actieve teamcontext blijft de plek leeg; geen vaste standaardnaam.
-        const activeTeamName = document.getElementById("activeTeamName");
-        if (activeTeamName) {
-            activeTeamName.textContent = meta ? " · " + teamLabel(meta) : "";
-        }
-
         applyTeamBranding(meta || null);
     }
 
@@ -6368,7 +6365,7 @@ function watchPlayersFromFirebase(onCancel) {
 
         const verified = !!user && !user.isAnonymous && user.emailVerified;
 
-        authEl("teamsCard").style.display = verified ? "block" : "none";
+        authEl("teamsCard").style.display = "block";
 
         syncHeader();
 
@@ -6376,9 +6373,15 @@ function watchPlayersFromFirebase(onCancel) {
 
             // Geen resten van het vorige account in de (verborgen) DOM laten staan.
             authEl("teamsList").textContent = "";
-            authEl("teamsMessage").style.display = "none";
             authEl("teamsEmpty").style.display = "none";
+            authEl("teamsMessage").textContent =
+                "Log in met een account met bevestigd e-mailadres om teams aan te maken of te beheren.";
+            authEl("teamsMessage").style.display = "block";
 
+            // Teambeheer blijft zichtbaar; acties waarvoor verificatie nodig is
+            // worden pas bruikbaar nadat de gebruiker correct is ingelogd.
+            authEl("teamsCreateToggle").disabled = true;
+            authEl("teamsRefresh").disabled = true;
             closeCreateForm();
 
             return;
