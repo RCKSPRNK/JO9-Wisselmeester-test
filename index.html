@@ -804,6 +804,210 @@ header p:not(.header-team) { display:none; }
 @media (min-width:560px) { .container { max-width:650px; padding-top:18px; } .home-menu-grid { grid-template-columns:1fr; } .home-menu-button { min-height:88px; grid-template-columns:48px 1fr 18px; } .home-menu-button span { grid-row:span 2; justify-content:center; } .home-menu-button::after { display:block; } .wm-bottom-nav { width:min(100%,650px); } }
 @media (max-width:380px) { .container { padding-left:9px; padding-right:9px; } .card,#scheduleSection { padding:15px; } .home-menu-button { grid-template-columns:38px 1fr 14px; gap:8px; font-size:15px; padding:13px; } .home-menu-button span { font-size:23px; } }
 
+
+
+/* =========================================================
+   JO9 Wisselmeester — centrale professionele knopstijl
+   Ontworpen voor hoog contrast en gebruik langs het voetbalveld
+   ========================================================= */
+:root {
+    --wm-button-primary: #c8101e;
+    --wm-button-primary-hover: #a90e19;
+    --wm-button-dark: #172b3a;
+    --wm-button-dark-hover: #243e50;
+    --wm-button-success: #176b4d;
+    --wm-button-success-hover: #10553c;
+    --wm-button-danger: #a61b25;
+    --wm-button-danger-hover: #85151d;
+    --wm-button-focus: #ffbf47;
+}
+
+/* Basis: alle gewone knoppen krijgen duidelijke tekst en een stevig vlak. */
+button {
+    background: var(--wm-button-dark);
+    color: #ffffff;
+    border: 1px solid var(--wm-button-dark);
+    border-radius: 12px;
+    min-height: 44px;
+    padding: 12px 16px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.25;
+    box-shadow: 0 2px 0 rgba(0, 0, 0, .12);
+    transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+button:hover:not(:disabled) {
+    opacity: 1;
+    background: var(--wm-button-dark-hover);
+    border-color: var(--wm-button-dark-hover);
+}
+
+button:active:not(:disabled) {
+    transform: translateY(1px);
+    box-shadow: none;
+}
+
+button:focus-visible {
+    outline: 3px solid var(--wm-button-focus);
+    outline-offset: 3px;
+}
+
+button:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* Primaire acties en actieve keuze: Wisselmeester-rood. */
+button.primary,
+button.is-primary,
+.home-menu-button.is-featured,
+.wm-bottom-nav button.active,
+.auth-tabs button.active {
+    background: var(--wm-button-primary);
+    border-color: var(--wm-button-primary);
+    color: #ffffff;
+}
+
+button.primary:hover:not(:disabled),
+button.is-primary:hover:not(:disabled),
+.home-menu-button.is-featured:hover,
+.wm-bottom-nav button.active:hover,
+.auth-tabs button.active:hover {
+    background: var(--wm-button-primary-hover);
+    border-color: var(--wm-button-primary-hover);
+    color: #ffffff;
+}
+
+/* Secundaire acties blijven donker voor goede leesbaarheid in fel zonlicht. */
+button.secondary,
+button.lineup-button,
+button.auth-toggle,
+button.team-action,
+button.cancel,
+button.back-button {
+    background: var(--wm-button-dark);
+    border-color: var(--wm-button-dark);
+    color: #ffffff;
+}
+
+button.secondary:hover:not(:disabled),
+button.lineup-button:hover:not(:disabled),
+button.auth-toggle:hover:not(:disabled),
+button.team-action:hover:not(:disabled),
+button.cancel:hover:not(:disabled),
+button.back-button:hover:not(:disabled) {
+    background: var(--wm-button-dark-hover);
+    border-color: var(--wm-button-dark-hover);
+    color: #ffffff;
+}
+
+/* Links die als tekstlink zijn bedoeld, blijven visueel links. */
+button.auth-link {
+    min-height: 36px;
+    padding: 8px 0 0;
+    background: transparent;
+    color: var(--wm-ink);
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    text-align: left;
+    text-decoration: underline;
+    font-weight: 600;
+}
+
+button.auth-link:hover:not(:disabled) {
+    background: transparent;
+    color: var(--wm-button-primary-hover);
+    border: 0;
+    text-decoration-thickness: 2px;
+}
+
+/* Grote navigatiekaarten: donker met wit, geselecteerde kaart rood. */
+button.home-menu-button {
+    background: #172b3a;
+    color: #ffffff;
+    border: 1px solid #172b3a;
+    min-height: 76px;
+    box-shadow: 0 3px 0 rgba(0, 0, 0, .14);
+}
+
+button.home-menu-button small {
+    color: #f1f5f9;
+    opacity: .96;
+}
+
+button.home-menu-button::after {
+    color: #ffffff;
+}
+
+button.home-menu-button:hover:not(:disabled) {
+    background: #243e50;
+    border-color: #243e50;
+}
+
+button.home-menu-button.is-featured,
+button.home-menu-button.is-featured small,
+button.home-menu-button.is-featured::after {
+    color: #ffffff;
+}
+
+/* Bottom navigation heeft een eigen compacte indeling, maar blijft contrastrijk. */
+.wm-bottom-nav button {
+    min-height: 44px;
+    padding: 6px 3px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: #f1f5f9;
+    box-shadow: none;
+}
+
+.wm-bottom-nav button:hover:not(:disabled) {
+    background: #243e50;
+    border-color: #526575;
+    color: #ffffff;
+}
+
+.wm-bottom-nav button.active,
+.wm-bottom-nav button.active:hover {
+    background: var(--wm-button-primary);
+    border-color: var(--wm-button-primary);
+    color: #ffffff;
+}
+
+/* Wedstrijd- en spelerregels zijn inhoudskaarten: behoud donkere tekst op wit. */
+button.match-row,
+button.manage-player-row {
+    background: #ffffff;
+    color: #17212b;
+    border: 1px solid #c7d0d9;
+    box-shadow: none;
+    text-align: left;
+}
+
+button.match-row:hover:not(:disabled),
+button.manage-player-row:hover:not(:disabled) {
+    background: #f0f4f7;
+    border-color: #8796a5;
+    color: #101923;
+}
+
+/* Kleine knoppen houden voldoende tikruimte op mobiele schermen. */
+.team-row button {
+    min-height: 44px;
+    padding: 10px 13px;
+    font-size: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    button {
+        transition: none;
+    }
+}
+
 </style>
 </head>
 
@@ -831,7 +1035,7 @@ header p:not(.header-team) { display:none; }
 <div id="accountView" style="display:none;">
     <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
 
-<div class="card" id="teamsCard">
+<div class="card" id="teamsCard" style="display:none;">
 
     <h2>Mijn teams</h2>
 
@@ -6365,7 +6569,7 @@ function watchPlayersFromFirebase(onCancel) {
 
         const verified = !!user && !user.isAnonymous && user.emailVerified;
 
-        authEl("teamsCard").style.display = "block";
+        authEl("teamsCard").style.display = verified ? "block" : "none";
 
         syncHeader();
 
@@ -6373,15 +6577,9 @@ function watchPlayersFromFirebase(onCancel) {
 
             // Geen resten van het vorige account in de (verborgen) DOM laten staan.
             authEl("teamsList").textContent = "";
+            authEl("teamsMessage").style.display = "none";
             authEl("teamsEmpty").style.display = "none";
-            authEl("teamsMessage").textContent =
-                "Log in met een account met bevestigd e-mailadres om teams aan te maken of te beheren.";
-            authEl("teamsMessage").style.display = "block";
 
-            // Teambeheer blijft zichtbaar; acties waarvoor verificatie nodig is
-            // worden pas bruikbaar nadat de gebruiker correct is ingelogd.
-            authEl("teamsCreateToggle").disabled = true;
-            authEl("teamsRefresh").disabled = true;
             closeCreateForm();
 
             return;
