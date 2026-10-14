@@ -812,6 +812,13 @@ header p:not(.header-team) { display:none; }
 .active-team-badge[hidden]{display:none!important}
 @media(max-width:420px){.view-back-row{gap:7px}.view-back-row .view-back{padding:10px 11px;font-size:13px}.active-team-badge{max-width:58%;padding:7px 9px;font-size:12px}}
 
+
+/* Actief team rechts naast de Hoofdmenu-kop */
+.home-menu-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 14px}
+.home-menu-heading h2{margin:0;flex:0 1 auto}
+.home-active-team-badge{max-width:58%;min-height:34px;padding:6px 10px;font-size:12px;text-align:right}
+@media(max-width:420px){.home-menu-heading{gap:6px}.home-active-team-badge{max-width:56%;padding:6px 8px;font-size:11px}}
+
 </style>
 </head>
 
@@ -827,7 +834,7 @@ header p:not(.header-team) { display:none; }
 </header>
 
 <div class="card home-menu" id="homeMenu">
-    <h2>Hoofdmenu</h2>
+    <div class="home-menu-heading"><h2>Hoofdmenu</h2><span class="active-team-badge home-active-team-badge" data-active-team-label hidden></span></div>
     <div class="home-menu-grid">
         <button type="button" class="home-menu-button is-featured" data-view="match"><span>⚽</span>Wedstrijd<small>Nieuwe wedstrijd en wisselschema</small></button>
         <button type="button" class="home-menu-button" data-view="account"><span>👥</span>Mijn teams<small>Beheer teams, spelers en trainers</small></button>
