@@ -804,21 +804,6 @@ header p:not(.header-team) { display:none; }
 @media (min-width:560px) { .container { max-width:650px; padding-top:18px; } .home-menu-grid { grid-template-columns:1fr; } .home-menu-button { min-height:88px; grid-template-columns:48px 1fr 18px; } .home-menu-button span { grid-row:span 2; justify-content:center; } .home-menu-button::after { display:block; } .wm-bottom-nav { width:min(100%,650px); } }
 @media (max-width:380px) { .container { padding-left:9px; padding-right:9px; } .card,#scheduleSection { padding:15px; } .home-menu-button { grid-template-columns:38px 1fr 14px; gap:8px; font-size:15px; padding:13px; } .home-menu-button span { font-size:23px; } }
 
-
-/* Actief team naast Hoofdmenu: dynamisch uit de bestaande actieve teamcontext */
-.view-back-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 14px}
-.view-back-row .view-back{flex:0 0 auto;margin:0}
-.active-team-badge{display:inline-flex;align-items:center;justify-content:center;max-width:62%;min-height:40px;padding:8px 12px;border:1px solid #c8101e;border-radius:10px;background:#172b3a;color:#fff;font-size:13px;font-weight:700;line-height:1.25;text-align:right;overflow-wrap:anywhere}
-.active-team-badge[hidden]{display:none!important}
-@media(max-width:420px){.view-back-row{gap:7px}.view-back-row .view-back{padding:10px 11px;font-size:13px}.active-team-badge{max-width:58%;padding:7px 9px;font-size:12px}}
-
-
-/* Actief team rechts naast de Hoofdmenu-kop */
-.home-menu-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 14px}
-.home-menu-heading h2{margin:0;flex:0 1 auto}
-.home-active-team-badge{max-width:58%;min-height:34px;padding:6px 10px;font-size:12px;text-align:right}
-@media(max-width:420px){.home-menu-heading{gap:6px}.home-active-team-badge{max-width:56%;padding:6px 8px;font-size:11px}}
-
 </style>
 </head>
 
@@ -834,17 +819,17 @@ header p:not(.header-team) { display:none; }
 </header>
 
 <div class="card home-menu" id="homeMenu">
-    <div class="home-menu-heading"><h2>Hoofdmenu</h2><span class="active-team-badge home-active-team-badge" data-active-team-label hidden></span></div>
+    <h2>Hoofdmenu</h2>
     <div class="home-menu-grid">
         <button type="button" class="home-menu-button is-featured" data-view="match"><span>⚽</span>Wedstrijd<small>Nieuwe wedstrijd en wisselschema</small></button>
-        <button type="button" class="home-menu-button" data-view="account"><span>👥</span>Mijn teams<small>Beheer teams, spelers en trainers</small></button>
         <button type="button" class="home-menu-button" data-view="history"><span>▥</span>Wedstrijden &amp; speeltijd<small>Historische speeltijd en gespeelde wedstrijden</small></button>
+        <button type="button" class="home-menu-button" data-view="account"><span>👥</span>Mijn teams<small>Beheer teams, spelers en trainers</small></button>
         <button type="button" class="home-menu-button" data-view="management"><span>⚙</span>Instellingen<small>App-instellingen en beheer</small></button>
     </div>
 </div>
 
 <div id="accountView" style="display:none;">
-    <div class="view-back-row"><button type="button" class="secondary view-back" data-view="home">← Hoofdmenu</button><span class="active-team-badge" data-active-team-label hidden></span></div>
+    <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
 
 <div class="card" id="teamsCard" style="display:none;">
 
@@ -954,7 +939,7 @@ header p:not(.header-team) { display:none; }
 </div><!-- einde accountView -->
 
 <div class="card" id="newMatchCard" style="display:none;">
-    <div class="view-back-row"><button type="button" class="secondary view-back" data-view="home">← Hoofdmenu</button><span class="active-team-badge" data-active-team-label hidden></span></div>
+    <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
 
     <h2>1. Nieuwe wedstrijd</h2>
 
@@ -1015,7 +1000,7 @@ header p:not(.header-team) { display:none; }
 </div>
 
 <div id="scheduleSection" class="card" style="display:none;">
-    <div class="view-back-row"><button type="button" class="secondary view-back" data-view="home">← Hoofdmenu</button><span class="active-team-badge" data-active-team-label hidden></span></div>
+    <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
     <h2>3. Wisselschema</h2>
 
     <p id="summary" class="small"></p>
@@ -1028,7 +1013,7 @@ header p:not(.header-team) { display:none; }
 </div>
 
 <div class="card" id="historyView" style="display:none;">
-    <div class="view-back-row"><button type="button" class="secondary view-back" data-view="home">← Hoofdmenu</button><span class="active-team-badge" data-active-team-label hidden></span></div>
+    <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
 
     <h2>4. 📊 Historische speeltijd</h2>
 
@@ -1091,7 +1076,7 @@ header p:not(.header-team) { display:none; }
 
 </div>
   <div class="card" id="managementView" style="display:none;">
-    <div class="view-back-row"><button type="button" class="secondary view-back" data-view="home">← Hoofdmenu</button><span class="active-team-badge" data-active-team-label hidden></span></div>
+    <button type="button" class="secondary view-back" data-view="home">← Terug naar menu</button>
 
     <div class="card" id="authCard">
 
@@ -5698,27 +5683,13 @@ function watchPlayersFromFirebase(onCancel) {
     }
 
     function syncHeader() {
+
         const meta =
             (activeContext.mode === "team" && contextPhase === "ready")
                 ? teamsState.teams.find(t => t.id === activeContext.teamId)
                 : null;
-        applyTeamBranding(meta || null);
-        updateActiveTeamBadges(meta || null);
-    }
 
-    function updateActiveTeamBadges(meta) {
-        const label = meta && meta.status === "available" ? teamLabel(meta) : "";
-        document.querySelectorAll("[data-active-team-label]").forEach(function (badge) {
-            if (label) {
-                badge.textContent = "⚽ " + label;
-                badge.hidden = false;
-                badge.title = label;
-            } else {
-                badge.textContent = "";
-                badge.hidden = true;
-                badge.removeAttribute("title");
-            }
-        });
+        applyTeamBranding(meta || null);
     }
 
     async function readTeamIndex(user) {
