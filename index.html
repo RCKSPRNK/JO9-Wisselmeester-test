@@ -399,6 +399,18 @@ padding-top: 35px;
     position: absolute;
     transform: translate(-50%, -50%);
     text-align: center;
+    touch-action: none;
+    cursor: grab;
+    z-index: 2;
+}
+
+.position.is-dragging {
+    cursor: grabbing;
+    z-index: 5;
+}
+
+.position select {
+    cursor: pointer;
 }
 
 .position select {
@@ -1970,6 +1982,75 @@ function openLineup(roundIndex) {
     document.getElementById("lineupModal").style.display = "block";
 
     populateLineupSelects();
+    applyLineupCoordinates(roundIndex);
+    enableLineupDragging();
+}
+
+// Bewaar de vrije veldposities per ronde in het bestaande schema-object.
+// Daardoor blijft de gekozen indeling behouden zolang het wedstrijdschema actief is.
+function applyLineupCoordinates(roundIndex) {
+    const coordinates = currentSchedule?.lineupCoordinates?.[roundIndex] || {};
+
+    lineupPositions.forEach(position => {
+        const element = document.querySelector(`#position-${position}`)?.closest(".position");
+        if (!element) return;
+
+        const saved = coordinates[position];
+        if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+            element.style.left = `${saved.x}%`;
+            element.style.top = `${saved.y}%`;
+        } else {
+            element.style.left = "";
+            element.style.top = "";
+        }
+    });
+}
+
+function enableLineupDragging() {
+    const field = document.querySelector("#lineupModal .football-field");
+    if (!field) return;
+
+    lineupPositions.forEach(position => {
+        const element = document.querySelector(`#position-${position}`)?.closest(".position");
+        if (!element || element.dataset.dragReady === "true") return;
+        element.dataset.dragReady = "true";
+
+        element.addEventListener("pointerdown", event => {
+            // Dropdowns moeten normaal bruikbaar blijven; slepen start op het naamlabel.
+            if (!event.target.closest("span")) return;
+            const rect = field.getBoundingClientRect();
+            const startX = event.clientX;
+            const startY = event.clientY;
+            const startLeft = parseFloat(element.style.left) || (element.offsetLeft / rect.width * 100);
+            const startTop = parseFloat(element.style.top) || (element.offsetTop / rect.height * 100);
+            element.classList.add("is-dragging");
+            element.setPointerCapture?.(event.pointerId);
+
+            const move = moveEvent => {
+                const x = Math.max(5, Math.min(95, startLeft + (moveEvent.clientX - startX) / rect.width * 100));
+                const y = Math.max(4, Math.min(96, startTop + (moveEvent.clientY - startY) / rect.height * 100));
+                element.style.left = `${x}%`;
+                element.style.top = `${y}%`;
+            };
+            const end = () => {
+                element.classList.remove("is-dragging");
+                element.removeEventListener("pointermove", move);
+                element.removeEventListener("pointerup", end);
+                element.removeEventListener("pointercancel", end);
+                if (!currentSchedule || currentLineupRound === null) return;
+                if (!currentSchedule.lineupCoordinates) currentSchedule.lineupCoordinates = {};
+                if (!currentSchedule.lineupCoordinates[currentLineupRound]) currentSchedule.lineupCoordinates[currentLineupRound] = {};
+                currentSchedule.lineupCoordinates[currentLineupRound][position] = {
+                    x: parseFloat(element.style.left),
+                    y: parseFloat(element.style.top)
+                };
+            };
+            element.addEventListener("pointermove", move);
+            element.addEventListener("pointerup", end, { once: true });
+            element.addEventListener("pointercancel", end, { once: true });
+            event.preventDefault();
+        });
+    });
 }
 
 function populateLineupSelects() {
@@ -3053,7 +3134,8 @@ const present =
     present,
     playCounts,
     benchSchedule,
-    lineups: {}
+    lineups: {},
+    lineupCoordinates: {}
 };
 
 displaySchedule(
