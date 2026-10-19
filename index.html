@@ -319,6 +319,16 @@ button {
     top: 72%;
 }
 
+.mini-extra-left {
+    left: 18%;
+    top: 50%;
+}
+
+.mini-extra-right {
+    left: 82%;
+    top: 50%;
+}
+
 .mini-goalkeeper {
     left: 50%;
     top: 90%;
@@ -448,6 +458,16 @@ padding-top: 35px;
 .position-bottom-right {
     left: 72%;
     top: 72%;
+}
+
+.position-extra-left {
+    left: 18%;
+    top: 50%;
+}
+
+.position-extra-right {
+    left: 82%;
+    top: 50%;
 }
 
 .position-goalkeeper {
@@ -1272,6 +1292,20 @@ header p:not(.header-team) { display:none; }
                 <span id="name-bottom-right">Naam</span>
             </div>
 
+            <div class="position position-extra-left">
+                <select id="position-extra-left" onchange="updateLineup()">
+                    <option value="">Kies speler</option>
+                </select>
+                <span id="name-extra-left">Naam</span>
+            </div>
+
+            <div class="position position-extra-right">
+                <select id="position-extra-right" onchange="updateLineup()">
+                    <option value="">Kies speler</option>
+                </select>
+                <span id="name-extra-right">Naam</span>
+            </div>
+
             <div class="position position-goalkeeper">
                 <select id="position-goalkeeper" onchange="updateLineup()">
                     <option value="">Kies speler</option>
@@ -1965,6 +1999,8 @@ const lineupPositions = [
     "center",
     "bottom-left",
     "bottom-right",
+    "extra-left",
+    "extra-right",
     "goalkeeper"
 ];
 
@@ -2232,6 +2268,8 @@ function renderLineupPreview(roundIndex) {
         "center": "mini-center",
         "bottom-left": "mini-bottom-left",
         "bottom-right": "mini-bottom-right",
+        "extra-left": "mini-extra-left",
+        "extra-right": "mini-extra-right",
         "goalkeeper": "mini-goalkeeper"
     };
 
