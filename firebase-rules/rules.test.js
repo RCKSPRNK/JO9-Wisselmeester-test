@@ -335,6 +335,29 @@ describe('DATA-INTEGRITEIT', () => {
   it('27c. onbekende velden onder een team worden geweigerd', async () => {
     await assertFails(set(ref(as('ownerA'), 'teams/teamA/geheim'), 'x'));
   });
+  it('27d. owner kan ageCategory zetten op een geldige waarde', async () => {
+    await assertSucceeds(set(ref(as('ownerA'), 'teams/teamA/ageCategory'), 'JO11'));
+    assert.strictEqual(await raw('teams/teamA/ageCategory'), 'JO11');
+  });
+  it('27e. trainer kan ageCategory niet wijzigen', async () => {
+    await assertFails(set(ref(as('trainerA'), 'teams/teamA/ageCategory'), 'JO12'));
+  });
+  it('27f. ongeldige ageCategory-waarde wordt geweigerd', async () => {
+    await assertFails(set(ref(as('ownerA'), 'teams/teamA/ageCategory'), 'JO13'));
+    await assertFails(set(ref(as('ownerA'), 'teams/teamA/ageCategory'), ''));
+    await assertFails(set(ref(as('ownerA'), 'teams/teamA/ageCategory'), 123));
+  });
+  it('27g. team kan worden aangemaakt met een geldige ageCategory', async () => {
+    await assertSucceeds(set(ref(as('newUser'), 'teams/teamCat'), newTeam('newUser', { ageCategory: 'JO8' })));
+    assert.strictEqual(await raw('teams/teamCat/ageCategory'), 'JO8');
+  });
+  it('27h. team kan worden aangemaakt zonder ageCategory (achterwaarts compatibel)', async () => {
+    await assertSucceeds(set(ref(as('newUser'), 'teams/teamNoCat'), newTeam('newUser')));
+    assert.strictEqual(await raw('teams/teamNoCat/ageCategory'), null);
+  });
+  it('27i. team kan niet worden aangemaakt met een ongeldige ageCategory', async () => {
+    await assertFails(set(ref(as('newUser'), 'teams/teamBadCat'), newTeam('newUser', { ageCategory: 'XYZ' })));
+  });
 });
 
 describe('INVITES', () => {

@@ -334,6 +334,16 @@ button {
     top: 90%;
 }
 
+.mini-mid-left {
+    left: 18%;
+    top: 50%;
+}
+
+.mini-mid-right {
+    left: 82%;
+    top: 50%;
+}
+
 .mini-lineup-empty {
     position: absolute;
     inset: 0;
@@ -487,6 +497,16 @@ padding-top: 35px;
 .position-goalkeeper {
     left: 50%;
     top: 90%;
+}
+
+.position-mid-left {
+    left: 18%;
+    top: 50%;
+}
+
+.position-mid-right {
+    left: 82%;
+    top: 50%;
 }
     
 button:hover {
@@ -928,6 +948,17 @@ header p:not(.header-team) { display:none; }
         <label>
             Seizoen
             <input type="text" id="teamCreateSeason" maxlength="20" autocomplete="off">
+        </label>
+
+        <label>
+            Leeftijdscategorie
+            <select id="teamCreateAgeCategory">
+                <option value="JO8">JO8 (6 tegen 6, 4x10 min)</option>
+                <option value="JO9" selected>JO9 (6 tegen 6, 4x10 min)</option>
+                <option value="JO10">JO10 (6 tegen 6, 4x12,5 min)</option>
+                <option value="JO11">JO11 (8 tegen 8, 4x15 min)</option>
+                <option value="JO12">JO12 (8 tegen 8, 4x15 min)</option>
+            </select>
         </label>
 
         <button type="submit" class="primary" id="teamCreateSubmit">Aanmaken</button>
@@ -1399,6 +1430,70 @@ const APP_CONFIG = {
     clubName: "BVV Barendrecht",
     teamName: "JO9-9"
 };
+
+/*
+LEEFTIJDSCATEGORIEËN
+
+Iedere categorie bepaalt automatisch:
+  fieldPlayers   aantal veldspelers (excl. wissels) per team
+  rounds         aantal speelrondes per wedstrijd
+  roundMinutes   lengte van één ronde in minuten
+
+Dit vervangt de vroegere vaste aannames van 6 veldspelers,
+4 rondes en 10 minuten per ronde. "JO9" (de historische default)
+blijft bestaan met exact dezelfde waarden als voorheen, zodat
+bestaande teams zonder opgeslagen categorie ongewijzigd blijven
+werken.
+
+Een team zonder ageCategory-veld (bestaande teams, aangemaakt
+vóór deze functie) valt terug op DEFAULT_AGE_CATEGORY ("JO9").
+*/
+
+const AGE_CATEGORIES = {
+    "JO8":  { label: "JO8  (6 tegen 6)",  fieldPlayers: 6, rounds: 4, roundMinutes: 10 },
+    "JO9":  { label: "JO9  (6 tegen 6)",  fieldPlayers: 6, rounds: 4, roundMinutes: 10 },
+    "JO10": { label: "JO10 (6 tegen 6)",  fieldPlayers: 6, rounds: 4, roundMinutes: 12.5 },
+    "JO11": { label: "JO11 (8 tegen 8)",  fieldPlayers: 8, rounds: 4, roundMinutes: 15 },
+    "JO12": { label: "JO12 (8 tegen 8)",  fieldPlayers: 8, rounds: 4, roundMinutes: 15 }
+};
+
+const DEFAULT_AGE_CATEGORY = "JO9";
+
+// Minimaal aantal wisselspelers dat de app met de huidige
+// backtracking-aanpak binnen een redelijke tijd (budget) nog
+// een schema voor kan opstellen. Boven dit aantal groeit de
+// zoekruimte te snel voor een realtime UI-wachttijd.
+const MAX_PRESENT_PLAYERS = 18;
+
+// Actieve categorie-sleutel van het huidige team. Volgt
+// hetzelfde patroon als APP_CONFIG.clubName/teamName: in LEGACY
+// de vaste standaard, in teamcontext bijgewerkt door
+// applyTeamBranding() zodra de teammetadata binnen is. Een team
+// zonder (geldig) ageCategory-veld - bijvoorbeeld aangemaakt vóór
+// deze functie bestond - valt terug op DEFAULT_AGE_CATEGORY, dus
+// blijft precies het oude gedrag (6 tegen 6, 4 rondes, 10 minuten).
+let activeAgeCategory = DEFAULT_AGE_CATEGORY;
+
+function resolveAgeCategory(categoryKey) {
+
+    const key = AGE_CATEGORIES[categoryKey]
+        ? categoryKey
+        : DEFAULT_AGE_CATEGORY;
+
+    return { key, ...AGE_CATEGORIES[key] };
+}
+
+function currentCategory() {
+    return resolveAgeCategory(activeAgeCategory);
+}
+
+// Nette weergave van de rondeduur: hele getallen zonder decimaal
+// (10), halve getallen met één decimaal (12,5) - Nederlandse notatie.
+function formatRoundMinutes(minutes) {
+    return Number.isInteger(minutes)
+        ? String(minutes)
+        : String(minutes).replace(".", ",");
+}
 
 function applyBranding() {
 
@@ -1984,11 +2079,22 @@ function validateNewTeamInput(input) {
         }
     });
 
+    // Leeftijdscategorie: optioneel veld, valt terug op de
+    // standaard (JO9) bij een ontbrekende of onbekende waarde.
+    // Geen verplicht veld: bestaande aanroepers die dit veld niet
+    // meesturen (en bestaande tests) blijven geldig.
+    const rawCategory = input && input.ageCategory;
+
+    values.ageCategory =
+        AGE_CATEGORIES[rawCategory] ? rawCategory : DEFAULT_AGE_CATEGORY;
+
     return { ok: Object.keys(errors).length === 0, values, errors };
 }
 
-// Het record dat de Rules verwachten: precies deze zes velden, de aanmaker
-// als enige owner. Geen players/matches: een nieuw team start leeg.
+// Het record dat de Rules verwachten: clubName/teamName/season/
+// createdAt/createdBy/members, plus het optionele ageCategory-
+// veld. De aanmaker is enige owner. Geen players/matches: een
+// nieuw team start leeg.
 function buildNewTeamRecord(uid, values, now) {
 
     if (!isValidUid(uid)) {
@@ -1998,7 +2104,7 @@ function buildNewTeamRecord(uid, values, now) {
     const members = {};
     members[uid] = "owner";
 
-    return {
+    const record = {
         clubName: values.clubName,
         teamName: values.teamName,
         season: values.season,
@@ -2006,6 +2112,16 @@ function buildNewTeamRecord(uid, values, now) {
         createdBy: uid,
         members: members
     };
+
+    // Alleen toevoegen als geldig: een ontbrekend of onbekend
+    // ageCategory-veld op het team betekent "val terug op
+    // DEFAULT_AGE_CATEGORY" (zie resolveAgeCategory), dus we
+    // schrijven liever niets dan een ongeldige waarde.
+    if (values.ageCategory && AGE_CATEGORIES[values.ageCategory]) {
+        record.ageCategory = values.ageCategory;
+    }
+
+    return record;
 }
 
 // denied    -> definitief: er is niets geschreven
@@ -2095,8 +2211,14 @@ function openLineup(roundIndex) {
 
     currentLineupRound = roundIndex;
 
+    const category =
+        currentSchedule.category || currentCategory();
+
+    renderFootballFieldPositions(category.fieldPlayers);
+
     document.getElementById("lineupRoundTitle").textContent =
-        `Ronde ${roundIndex + 1} · 10 minuten`;
+        `Ronde ${roundIndex + 1} · ${formatRoundMinutes(category.roundMinutes)} minuten`;
+
 
     document.getElementById("lineupModal").style.display = "block";
 
@@ -2442,7 +2564,7 @@ function renderLineupPreview(roundIndex) {
 
                 return `
                     <div
-                        class="mini-position ${positions[position]}"
+                        class="mini-position mini-${position}"
                     >
                         ${name || "—"}
                     </div>
@@ -2713,10 +2835,10 @@ De app bepaalt welke spelers die extra ronde verdienen.
 */
 
 
-function findIdealPlayCounts(present) {
+function findIdealPlayCounts(present, category) {
 
     const n = present.length;
-    const totalPlaySlots = 6 * 4;
+    const totalPlaySlots = category.fieldPlayers * category.rounds;
 
     // Basisverdeling
     const minimumRounds = Math.floor(totalPlaySlots / n);
@@ -2781,12 +2903,42 @@ function findIdealPlayCounts(present) {
             const playerCount =
                 Number(match.playerCount) || 0;
 
-            if (playerCount < 6) {
+            /*
+                Elke wedstrijd bewaart zijn eigen categorie-
+                momentopname (category.fieldPlayers/rounds/
+                roundMinutes), zodat de eerlijkheidsberekening
+                correct blijft ook als een team later van
+                categorie wisselt. Wedstrijden van vóór deze
+                functie hebben geen category-veld: die vallen
+                terug op de HUIDIGE categorie van het team, wat
+                voor bestaande teams zonder ageCategory exact
+                het oude gedrag (6/4/10) oplevert.
+            */
+
+            const matchFieldPlayers =
+                (match.category && Number(match.category.fieldPlayers) > 0)
+                    ? Number(match.category.fieldPlayers)
+                    : category.fieldPlayers;
+
+            const matchRounds =
+                (match.category && Number(match.category.rounds) > 0)
+                    ? Number(match.category.rounds)
+                    : category.rounds;
+
+            const matchRoundMinutes =
+                (match.category && Number(match.category.roundMinutes) > 0)
+                    ? Number(match.category.roundMinutes)
+                    : category.roundMinutes;
+
+            if (playerCount < matchFieldPlayers) {
                 return;
             }
 
+            const matchTotalPlaySlots =
+                matchFieldPlayers * matchRounds;
+
             const expectedMinutes =
-                (totalPlaySlots / playerCount) * 10;
+                (matchTotalPlaySlots / playerCount) * matchRoundMinutes;
 
             const actualMinutes =
                 Number(playerResult.minutes) || 0;
@@ -2925,11 +3077,61 @@ function findIdealPlayCounts(present) {
 
     return counts;
 }
-function buildSchedule(present, playCounts) {
+/*
+Garandeerde noodoplossing (geen backtracking): wijs in iedere
+ronde de bankspelers toe aan wie op dat moment nog de meeste
+bankbeurten "schuldig" is. Dit raakt de eerlijkheid van de
+SPEELTIJD niet aan (requiredBench komt ongewijzigd uit
+findIdealPlayCounts/playCounts) - het is alleen minder verfijnd
+in de spreiding van bankbeurten dan het backtracking-algoritme.
+Wordt alleen gebruikt als buildSchedule binnen zijn tijdsbudget
+geen enkel geldig schema kon vinden (zie SCHEDULE_TIME_BUDGET_MS).
+*/
+
+function greedyFallbackSchedule(n, fieldPlayers, rounds, playCounts) {
+
+    const benchCount = n - fieldPlayers;
+
+    const remaining = playCounts.map(
+        count => rounds - count
+    );
+
+    const schedule = [];
+
+    for (let r = 0; r < rounds; r++) {
+
+        const order = remaining
+            .map((q, idx) => ({ q, idx }))
+            .sort((a, b) => b.q - a.q || a.idx - b.idx);
+
+        const chosen =
+            order.slice(0, benchCount).map(x => x.idx);
+
+        chosen.forEach(idx => remaining[idx]--);
+
+        schedule.push(chosen);
+    }
+
+    return schedule;
+}
+
+// Maximale tijd die het backtracking-algoritme krijgt om het best
+// mogelijke schema te zoeken, voordat we terugvallen op het beste
+// resultaat tot dan toe (of, als er nog geen enkel geldig schema
+// was gevonden, op greedyFallbackSchedule). Dit voorkomt dat de
+// browser vastloopt bij grotere groepen (bijv. 8-tegen-8 met veel
+// wisselspelers), zonder de eerlijkheid van de speelminuten aan
+// te tasten: elk teruggegeven schema voldoet altijd aan exact de
+// vereiste bankbeurten per speler.
+const SCHEDULE_TIME_BUDGET_MS = 3000;
+
+function buildSchedule(present, playCounts, category) {
 
     const n = present.length;
+    const fieldPlayers = category.fieldPlayers;
+    const totalRounds = category.rounds;
 
-    const benchCount = n - 6;
+    const benchCount = n - fieldPlayers;
 
     /*
     benchRounds[playerIndex] = rondes waarin speler bank zit
@@ -2943,28 +3145,70 @@ function buildSchedule(present, playCounts) {
     /*
     Iedere speler moet:
 
-    4 - speelrondes
+    totalRounds - speelrondes
 
     keer op de bank zitten.
     */
 
     const requiredBench = playCounts.map(
-        count => 4 - count
+        count => totalRounds - count
+    );
+
+    /*
+    Alle mogelijke bankcombinaties voor deze n/benchCount worden
+    precies ÉÉN keer berekend (niet bij elke recursieve stap
+    opnieuw, zoals voorheen). Bij grotere groepen is dit zelf een
+    dure berekening die anders de tijdsbudgetcontrole in recurse()
+    kon vertragen - juist in het scenario (veel spelers, 8-tegen-8)
+    waarin het budget het hardst nodig is.
+    */
+
+    const allCombinations = combinationsOf(
+        [...Array(n).keys()],
+        benchCount
     );
 
     /*
     We gebruiken backtracking om een geldige verdeling
-    te vinden.
+    te vinden, begrensd door een tijdsbudget (zie
+    SCHEDULE_TIME_BUDGET_MS hierboven).
     */
 
     let bestSchedule = null;
     let bestScore = Infinity;
+    let budgetExceeded = false;
+
+    // Zodra een schema met score 0 (perfect: geen enkele overtreding
+    // van de twee voorkeursregels) is gevonden, kan geen volgend
+    // schema nog beter zijn (scores zijn nooit negatief) - verder
+    // zoeken is dan pure tijdverspilling. Dit is de belangrijkste
+    // performance-fix: zonder deze early exit doorzoekt het
+    // algoritme altijd het VOLLEDIGE tijdsbudget, ook wanneer het
+    // al na de eerste paar pogingen een perfect schema vond.
+    let perfectFound = false;
+
+    const deadline = Date.now() + SCHEDULE_TIME_BUDGET_MS;
+    let iterationCounter = 0;
 
     const rounds = [];
 
     function recurse(round) {
 
-        if (round === 4) {
+        if (perfectFound) {
+            return;
+        }
+
+        iterationCounter++;
+
+        if (
+            (iterationCounter & 255) === 0 &&
+            Date.now() > deadline
+        ) {
+            budgetExceeded = true;
+            return;
+        }
+
+        if (round === totalRounds) {
 
             /*
             Controleer aantallen.
@@ -3012,11 +3256,11 @@ function buildSchedule(present, playCounts) {
             Straf dezelfde bankcombinaties.
             */
 
-            for (let r1 = 0; r1 < 4; r1++) {
+            for (let r1 = 0; r1 < totalRounds; r1++) {
 
                 for (
                     let r2 = r1 + 1;
-                    r2 < 4;
+                    r2 < totalRounds;
                     r2++
                 ) {
 
@@ -3064,6 +3308,10 @@ function buildSchedule(present, playCounts) {
 
                 bestSchedule =
                     rounds.map(r => [...r]);
+
+                if (score === 0) {
+                    perfectFound = true;
+                }
             }
 
             return;
@@ -3071,15 +3319,11 @@ function buildSchedule(present, playCounts) {
 
 
         /*
-        Kies mogelijke bankspelers voor deze ronde.
+        Kies mogelijke bankspelers voor deze ronde
+        (vooraf berekend, zie allCombinations hierboven).
         */
 
-        const combinations = combinationsOf(
-            [...Array(n).keys()],
-            benchCount
-        );
-
-        for (const combination of combinations) {
+        for (const combination of allCombinations) {
 
             let valid = true;
 
@@ -3148,10 +3392,37 @@ Voeg bankronde toe.
             combination.forEach(index => {
                 benchRounds[index].pop();
             });
+
+            if (budgetExceeded || perfectFound) {
+                break;
+            }
         }
     }
 
     recurse(0);
+
+    /*
+    Als het tijdsbudget op was voordat er ook maar één
+    geldig schema werd gevonden, gebruiken we de
+    gegarandeerde noodoplossing. Dit raakt de eerlijkheid
+    van de speelminuten niet aan: beide paden respecteren
+    exact dezelfde requiredBench-aantallen per speler.
+    */
+
+    if (!bestSchedule && budgetExceeded) {
+
+        console.warn(
+            "⏱️ Wisselschema: tijdsbudget overschreden, " +
+            "noodoplossing gebruikt (speelminuten blijven eerlijk)."
+        );
+
+        return greedyFallbackSchedule(
+            n,
+            fieldPlayers,
+            totalRounds,
+            playCounts
+        );
+    }
 
     return bestSchedule;
 }
@@ -3256,12 +3527,14 @@ if (!opponent) {
 const present =
     getPresentPlayers();
 
-    if (present.length < 6) {
+    const category = currentCategory();
+
+    if (present.length < category.fieldPlayers) {
 
         error.innerHTML = `
             <div class="error">
-                ⚠️ Er zijn minimaal 6 spelers nodig
-                om 6 tegen 6 te spelen.
+                ⚠️ Er zijn minimaal ${category.fieldPlayers} spelers nodig
+                om ${category.fieldPlayers} tegen ${category.fieldPlayers} te spelen.
             </div>
         `;
 
@@ -3269,16 +3542,16 @@ const present =
     }
 
     /*
-    We beperken de eerste versie tot maximaal 12
-    spelers. Voor een JO9-team is dat ruim voldoende.
+    Boven MAX_PRESENT_PLAYERS groeit de zoekruimte van het
+    wisselschema te snel voor een realtime UI-wachttijd.
     */
 
-    if (present.length > 12) {
+    if (present.length > MAX_PRESENT_PLAYERS) {
 
         error.innerHTML = `
             <div class="error">
-                ⚠️ Deze eerste versie ondersteunt maximaal
-                12 aanwezige spelers.
+                ⚠️ Deze versie ondersteunt maximaal
+                ${MAX_PRESENT_PLAYERS} aanwezige spelers.
             </div>
         `;
 
@@ -3286,12 +3559,13 @@ const present =
     }
 
     const playCounts =
-        findIdealPlayCounts(present);
+        findIdealPlayCounts(present, category);
 
     const benchSchedule =
         buildSchedule(
             present,
-            playCounts
+            playCounts,
+            category
         );
 
     if (!benchSchedule) {
@@ -3313,6 +3587,7 @@ const present =
     present,
     playCounts,
     benchSchedule,
+    category,
     lineups: {},
     lineupCoordinates: {}
 };
@@ -3324,7 +3599,8 @@ displaySchedule(
     opponent,
     present,
     playCounts,
-    benchSchedule
+    benchSchedule,
+    category
 ); 
 }
 
@@ -3340,7 +3616,8 @@ function displaySchedule(
     opponent,
     present,
     playCounts,
-    benchSchedule
+    benchSchedule,
+    category
 ) {
 
     document.getElementById(
@@ -3355,7 +3632,9 @@ function displaySchedule(
                 )
         );
 
-   const minimumRounds = Math.floor((6 * 4) / present.length);
+   const minimumRounds = Math.floor(
+       (category.fieldPlayers * category.rounds) / present.length
+   );
 
 const advantagePlayers = present
     .filter((player, index) => playCounts[index] > minimumRounds)
@@ -3374,8 +3653,8 @@ document.getElementById(
     📅 ${matchDate} · 🕐 ${matchTime}
     <br>
     ${present.length} spelers aanwezig ·
-    6 spelers tegelijk in het veld ·
-    4 rondes van 10 minuten
+    ${category.fieldPlayers} tegen ${category.fieldPlayers} ·
+    ${category.rounds} rondes van ${formatRoundMinutes(category.roundMinutes)} minuten
     <br>
     <strong>${advantageText}</strong>
 `;
@@ -3385,7 +3664,7 @@ document.getElementById(
 
     rounds.innerHTML = "";
 
-    for (let r = 0; r < 4; r++) {
+    for (let r = 0; r < category.rounds; r++) {
 
         const bench =
             benchSchedule[r];
@@ -3408,7 +3687,7 @@ document.getElementById(
 
         div.innerHTML = `
             <div class="round-header">
-                Ronde ${r + 1} · 10 minuten
+                Ronde ${r + 1} · ${formatRoundMinutes(category.roundMinutes)} minuten
             </div>
 
             <div class="round-body">
@@ -3455,7 +3734,7 @@ document.getElementById(
 
         rounds.appendChild(div);
     }
-    for (let r = 0; r < 4; r++) {
+    for (let r = 0; r < category.rounds; r++) {
         renderLineupPreview(r);
     }
     /*
@@ -3493,9 +3772,15 @@ function finishMatch() {
     opponent,
     present,
     playCounts,
-    lineups
+    lineups,
+    category
 } = currentSchedule;
 
+    // Wedstrijden opgeslagen vóór deze functie hebben geen
+    // category-veld op currentSchedule: val dan terug op de
+    // huidige teamcategorie (voor bestaande teams zonder
+    // ageCategory exact het oude gedrag: 6/4/10).
+    const matchCategory = category || currentCategory();
 
     /*
     Basisgegevens van deze wedstrijd.
@@ -3503,7 +3788,8 @@ function finishMatch() {
 
     const n = present.length;
 
-    const totalPlaySlots = 6 * 4;
+    const totalPlaySlots =
+        matchCategory.fieldPlayers * matchCategory.rounds;
 
     const minimumRounds =
         Math.floor(totalPlaySlots / n);
@@ -3561,7 +3847,7 @@ function finishMatch() {
         (player, index) => {
 
             const minutes =
-                playCounts[index] * 10;
+                playCounts[index] * matchCategory.roundMinutes;
 
 
             const stored =
@@ -3635,6 +3921,17 @@ matches.push({
     homeAway: matchHomeAway,
     opponent: opponent,
     playerCount: n,
+
+    // Momentopname van de categorie waarmee deze wedstrijd is
+    // gespeeld. Nodig voor correcte eerlijkheidsberekeningen bij
+    // latere wedstrijden, ook als het team ondertussen van
+    // categorie wisselt (zie findIdealPlayCounts).
+    category: {
+        key: matchCategory.key,
+        fieldPlayers: matchCategory.fieldPlayers,
+        rounds: matchCategory.rounds,
+        roundMinutes: matchCategory.roundMinutes
+    },
 
     presentPlayerIds:
         present.map(player => player.id),
@@ -5946,7 +6243,8 @@ function watchPlayersFromFirebase(onCancel) {
     let trainerByEmailBusy = false;   // één addTrainer actie tegelijk
 
     // Header en clubnaam volgen het actieve team. Alleen weergave:
-    // de rekenlogica leest APP_CONFIG niet.
+    // de rekenlogica leest APP_CONFIG niet (maar activeAgeCategory
+    // WORDT door de rekenlogica gelezen - zie currentCategory()).
     function applyTeamBranding(meta) {
 
         APP_CONFIG.clubName =
@@ -5954,6 +6252,14 @@ function watchPlayersFromFirebase(onCancel) {
 
         APP_CONFIG.teamName =
             meta && meta.teamName ? meta.teamName : DEFAULT_BRANDING.teamName;
+
+        // Een team zonder (geldig) ageCategory-veld valt terug op
+        // DEFAULT_AGE_CATEGORY - exact het gedrag van bestaande
+        // teams vóór deze functie bestond (6 tegen 6, 4x10 min).
+        activeAgeCategory =
+            meta && AGE_CATEGORIES[meta.ageCategory]
+                ? meta.ageCategory
+                : DEFAULT_AGE_CATEGORY;
 
         applyBranding();
     }
@@ -6034,6 +6340,28 @@ function watchPlayersFromFirebase(onCancel) {
         );
     }
 
+    // Apart van readTeamMeta (die blijft strikt beperkt tot de drie
+    // verplichte metadata-velden, zie team-picker.test.js). Het
+    // ageCategory-veld is optioneel en mag nooit de teamlijst
+    // blokkeren: bij elke fout of ontbrekende waarde valt de
+    // aanroeper terug op DEFAULT_AGE_CATEGORY (resolveAgeCategory).
+    async function readTeamAgeCategory(teamId) {
+
+        try {
+
+            const snap = await withTimeout(
+                get(ref(db, "teams/" + teamId + "/ageCategory")),
+                10000
+            );
+
+            return snap.exists() ? snap.val() : null;
+
+        } catch (error) {
+
+            return null;
+        }
+    }
+
     async function refreshTeams(user) {
 
         const gen = ++teamsGen;
@@ -6061,10 +6389,30 @@ function watchPlayersFromFirebase(onCancel) {
                 return "aborted";
             }
 
+            // ageCategory is optioneel en mag nooit de teamlijst
+            // blokkeren: bij elke fout valt readTeamAgeCategory terug
+            // op null, en elders op DEFAULT_AGE_CATEGORY.
+            const ageCategories = await Promise.all(
+                metas.map(m =>
+                    m.status === "available"
+                        ? readTeamAgeCategory(m.id)
+                        : Promise.resolve(null)
+                )
+            );
+
+            if (stale()) {
+                return "aborted";
+            }
+
+            const metasWithCategory = metas.map((m, i) => ({
+                ...m,
+                ageCategory: ageCategories[i]
+            }));
+
             teamsState = {
                 uid,
                 phase: "ready",
-                teams: sortTeams(metas),
+                teams: sortTeams(metasWithCategory),
                 notice: null,
                 retryRestore: false
             };
@@ -6499,7 +6847,8 @@ function watchPlayersFromFirebase(onCancel) {
         const checked = validateNewTeamInput({
             clubName: authEl("teamCreateClub").value,
             teamName: authEl("teamCreateName").value,
-            season: authEl("teamCreateSeason").value
+            season: authEl("teamCreateSeason").value,
+            ageCategory: authEl("teamCreateAgeCategory").value
         });
 
         if (!checked.ok) {
