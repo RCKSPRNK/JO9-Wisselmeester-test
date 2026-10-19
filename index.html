@@ -364,6 +364,20 @@ padding-top: 35px;
     padding: 20px;
 }
 
+.lineup-format-select {
+    display: block;
+    margin: 8px 0 14px;
+    font-size: 14px;
+}
+
+.lineup-format-select select {
+    margin-left: 8px;
+}
+
+.position[data-extra-position="true"].is-lineup-hidden {
+    display: none;
+}
+
 .football-field {
     position: relative;
     width: 100%;
@@ -1253,6 +1267,14 @@ header p:not(.header-team) { display:none; }
 
         <p id="lineupRoundTitle"></p>
 
+        <label class="lineup-format-select">
+            Spelvorm
+            <select id="lineupFieldFormat" onchange="changeLineupFieldFormat()">
+                <option value="6">6 tegen 6</option>
+                <option value="8">8 tegen 8</option>
+            </select>
+        </label>
+
         <div class="football-field">
 
             <div class="field-middle-line"></div>
@@ -1292,14 +1314,14 @@ header p:not(.header-team) { display:none; }
                 <span id="name-bottom-right">Naam</span>
             </div>
 
-            <div class="position position-extra-left">
+            <div class="position position-extra-left" data-extra-position="true">
                 <select id="position-extra-left" onchange="updateLineup()">
                     <option value="">Kies speler</option>
                 </select>
                 <span id="name-extra-left">Naam</span>
             </div>
 
-            <div class="position position-extra-right">
+            <div class="position position-extra-right" data-extra-position="true">
                 <select id="position-extra-right" onchange="updateLineup()">
                     <option value="">Kies speler</option>
                 </select>
@@ -2004,6 +2026,67 @@ const lineupPositions = [
     "goalkeeper"
 ];
 
+// De twee extra posities die alleen bij 8-tegen-8 bruikbaar zijn.
+// Bij 6-tegen-6 blijven ze in de DOM aanwezig (voor de sleepcode),
+// maar worden ze verborgen en meegeteld noch gebruikt.
+const EXTRA_LINEUP_POSITIONS = ["extra-left", "extra-right"];
+
+// Spelvorm van de OPSTELLING (6 of 8 veldspelers). Dit is UITSLUITEND
+// een UI-keuze binnen de opstellingsmodal: het wisselschema
+// (buildSchedule/findIdealPlayCounts/finishMatch/speelminuten) blijft
+// ongewijzigd en weet niets van deze waarde. Niet opgeslagen in
+// Firebase, localStorage of currentSchedule - puur een sessievariabele
+// die reset bij een herlaadbeurt van de pagina.
+let lineupFieldFormat = 6;
+
+// De posities die bij de huidige spelvorm daadwerkelijk bruikbaar zijn.
+function activeLineupPositions() {
+    return lineupFieldFormat === 8
+        ? lineupPositions
+        : lineupPositions.filter(
+            position => !EXTRA_LINEUP_POSITIONS.includes(position)
+        );
+}
+
+// Aangeroepen als de gebruiker in de opstellingsmodal van spelvorm
+// wisselt. Verbergt/toont de twee extra posities, wist een eventueel
+// gekozen speler uit de posities die niet meer bruikbaar zijn (zodat
+// die speler weer gewoon als wisselspeler beschikbaar is) en
+// herberekent de dropdowns/wissellijst.
+function changeLineupFieldFormat() {
+
+    const select =
+        document.getElementById("lineupFieldFormat");
+
+    lineupFieldFormat =
+        select && Number(select.value) === 8 ? 8 : 6;
+
+    EXTRA_LINEUP_POSITIONS.forEach(position => {
+
+        const wrapper =
+            document.querySelector(`#position-${position}`)?.closest(".position");
+
+        const fieldSelect =
+            document.getElementById(`position-${position}`);
+
+        if (wrapper) {
+            wrapper.classList.toggle(
+                "is-lineup-hidden",
+                lineupFieldFormat !== 8
+            );
+        }
+
+        if (lineupFieldFormat !== 8 && fieldSelect) {
+            // Niet meer bruikbaar: leegmaken zodat deze speler weer
+            // als wisselspeler verschijnt en niet per ongeluk
+            // "onzichtbaar op het veld" blijft staan.
+            fieldSelect.value = "";
+        }
+    });
+
+    updateLineup();
+}
+
 function openLineup(roundIndex) {
 
     if (!currentSchedule) {
@@ -2016,6 +2099,24 @@ function openLineup(roundIndex) {
         `Ronde ${roundIndex + 1} · 10 minuten`;
 
     document.getElementById("lineupModal").style.display = "block";
+
+    const formatSelect =
+        document.getElementById("lineupFieldFormat");
+
+    if (formatSelect) {
+        formatSelect.value = String(lineupFieldFormat);
+    }
+
+    EXTRA_LINEUP_POSITIONS.forEach(position => {
+        const wrapper =
+            document.querySelector(`#position-${position}`)?.closest(".position");
+        if (wrapper) {
+            wrapper.classList.toggle(
+                "is-lineup-hidden",
+                lineupFieldFormat !== 8
+            );
+        }
+    });
 
     populateLineupSelects();
     applyLineupCoordinates(roundIndex);
@@ -2091,11 +2192,11 @@ function enableLineupDragging() {
 
 function populateLineupSelects() {
 
-    const benchIndexes =
-        currentSchedule.benchSchedule[currentLineupRound] || [];
-
     const savedLineup =
         currentSchedule.lineups?.[currentLineupRound] || {};
+
+    const active =
+        activeLineupPositions();
 
     lineupPositions.forEach(position => {
 
@@ -2108,8 +2209,8 @@ function populateLineupSelects() {
             `<option value="">Kies speler</option>`;
 
         // De opstelling is een vrije veldindeling: bied alle aanwezige
-        // spelers aan, ook spelers die volgens het wisselschema op de bank
-        // staan. Zo kunnen alle acht veldposities worden ingevuld.
+        // spelers aan. Zo kunnen alle veldposities van de gekozen
+        // spelvorm worden ingevuld.
         currentSchedule.present.forEach((player, index) => {
 
             const option =
@@ -2121,27 +2222,33 @@ function populateLineupSelects() {
             select.appendChild(option);
         });
 
+        // Niet-actieve posities (bijv. de twee extra's bij 6-tegen-6)
+        // blijven leeg: ze tellen niet mee als veldspeler, zodat de
+        // wissellijst en de dropdowns consistent blijven met de
+        // gekozen spelvorm.
         select.value =
-            savedLineup[position] || "";
+            active.includes(position)
+                ? (savedLineup[position] || "")
+                : "";
     });
-
-    const benchContainer =
-        document.getElementById("lineupBenchPlayers");
-
-    benchContainer.innerHTML =
-        benchIndexes
-            .map(index =>
-                `<div>🔴 ${currentSchedule.present[index].name}</div>`
-            )
-            .join("");
 
     updateLineup();
 }
 
 function updateLineup() {
 
+    const active =
+        activeLineupPositions();
+
+    // Alleen de ACTIEVE posities (passend bij de gekozen spelvorm)
+    // tellen mee als "op het veld". Bij 6-tegen-6 staan de twee
+    // extra-selects altijd leeg (zie changeLineupFieldFormat/
+    // populateLineupSelects), dus dit heeft in de praktijk hetzelfde
+    // effect als lineupPositions filteren - maar expliciet filteren
+    // voorkomt dat een niet-gewiste waarde in een verborgen positie
+    // toch een speler blokkeert.
     const selectedPlayerIds =
-        lineupPositions
+        active
             .map(position => {
 
                 const select =
@@ -2184,11 +2291,38 @@ function updateLineup() {
             player ? player.name : "Naam";
     });
 
+    // Wissellijst: alle aanwezige spelers die NIET in een actieve
+    // veldpositie staan. Dit is bewust afgeleid van de daadwerkelijke
+    // opstellingskeuze (niet van currentSchedule.benchSchedule), zodat
+    // een speler nooit tegelijk op het veld en als wisselspeler wordt
+    // getoond, en het aantal wisselspelers altijd klopt met de
+    // gekozen spelvorm. Let op: dit kan afwijken van de bankindeling
+    // in het officiële wisselschema (zie rapportage) - de eerlijkheids-
+    // en speelminutenberekening van het wisselschema zelf verandert
+    // hierdoor niet.
+    const benchContainer =
+        document.getElementById("lineupBenchPlayers");
+
+    if (benchContainer) {
+
+        const benchPlayers =
+            currentSchedule.present.filter(
+                player => !selectedPlayerIds.includes(String(player.id))
+            );
+
+        benchContainer.innerHTML =
+            benchPlayers.length
+                ? benchPlayers
+                    .map(player => `<div>🔴 ${player.name}</div>`)
+                    .join("")
+                : "Kies eerst spelers.";
+    }
+
     if (currentSchedule && currentLineupRound !== null) {
 
         currentSchedule.lineups[currentLineupRound] = {};
 
-        lineupPositions.forEach(position => {
+        active.forEach(position => {
 
             const select =
                 document.getElementById(`position-${position}`);
@@ -2209,7 +2343,7 @@ function closeLineup() {
 
         const lineup = {};
 
-        lineupPositions.forEach(position => {
+        activeLineupPositions().forEach(position => {
 
             const select =
                 document.getElementById(
@@ -2272,9 +2406,17 @@ function renderLineupPreview(roundIndex) {
         "goalkeeper": "mini-goalkeeper"
     };
 
+    // Toon alleen de posities die daadwerkelijk bij deze ronde zijn
+    // opgeslagen (dus nooit lege extra-vakjes als die ronde met
+    // 6-tegen-6 is ingevuld - zie updateLineup/changeLineupFieldFormat).
+    const previewPositions =
+        lineupPositions.filter(
+            position => Object.prototype.hasOwnProperty.call(lineup, position)
+        );
+
     const playerNames = {};
 
-    lineupPositions.forEach(position => {
+    previewPositions.forEach(position => {
 
         const playerId =
             lineup[position];
@@ -2293,7 +2435,7 @@ function renderLineupPreview(roundIndex) {
     preview.innerHTML = `
         <div class="lineup-mini-field">
 
-            ${lineupPositions.map(position => {
+            ${previewPositions.map(position => {
 
                 const name =
                     playerNames[position];
