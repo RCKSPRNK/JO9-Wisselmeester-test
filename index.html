@@ -2214,8 +2214,6 @@ function openLineup(roundIndex) {
     const category =
         currentSchedule.category || currentCategory();
 
-    renderFootballFieldPositions(category.fieldPlayers);
-
     document.getElementById("lineupRoundTitle").textContent =
         `Ronde ${roundIndex + 1} · ${formatRoundMinutes(category.roundMinutes)} minuten`;
 
