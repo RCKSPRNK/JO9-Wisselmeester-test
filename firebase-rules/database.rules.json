@@ -67,6 +67,11 @@
           ".validate": "newData.isString()"
         },
 
+        "ageCategory": {
+          ".write": "auth != null && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous' && root.child('teams').child($teamId).child('members').child(auth.uid).val() === 'owner'",
+          ".validate": "newData.isString() && (newData.val() === 'JO8' || newData.val() === 'JO9' || newData.val() === 'JO10' || newData.val() === 'JO11' || newData.val() === 'JO12')"
+        },
+
         "members": {
           "$memberUid": {
             ".write": "auth != null && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous' && data.val() === 'trainer' && !newData.exists() && ($memberUid === auth.uid || (root.child('teams').child($teamId).child('members').child(auth.uid).val() === 'owner' && $memberUid !== auth.uid))",
