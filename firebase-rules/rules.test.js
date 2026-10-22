@@ -278,19 +278,18 @@ describe('ATOMAIRE INDEX-UPDATES (users/{uid}/teams/{teamId})', () => {
 });
 
 describe('LEGACY (team/)', () => {
-  it('20. authenticated gebruiker kan team/ lezen', async () => {
-    const snap = await assertSucceeds(get(ref(as('trainerA'), 'team/players')));
-    assert.strictEqual(snap.val()[0].name, 'Legacy speler');
-    await assertSucceeds(get(ref(as('iemand', unverifiedTok()), 'team/matches')));
+  it('20. geverifieerde gebruiker kan team/ niet meer lezen; ook niet-geverifieerd niet', async () => {
+    await assertFails(get(ref(as('trainerA'), 'team/players')));
+    await assertFails(get(ref(as('iemand', unverifiedTok()), 'team/matches')));
   });
-  it('21. authenticated gebruiker kan team/ schrijven', async () => {
-    await assertSucceeds(set(ref(as('trainerA'), 'team/players'), [{ id: 1, name: 'Legacy speler', history: 10 }]));
-    await assertSucceeds(set(ref(as('trainerA'), 'team/matches'), [{ matchNumber: 2 }]));
+  it('21. geverifieerde gebruiker kan team/ niet meer schrijven', async () => {
+    await assertFails(set(ref(as('trainerA'), 'team/players'), [{ id: 1, name: 'Legacy speler', history: 10 }]));
+    await assertFails(set(ref(as('trainerA'), 'team/matches'), [{ matchNumber: 2 }]));
   });
-  it('22. anonymous gebruiker kan team/ lezen en schrijven (bestaand legacy-gedrag)', async () => {
-    await assertSucceeds(get(ref(anon(), 'team/players')));
-    await assertSucceeds(set(ref(anon(), 'team/players'), [{ id: 1, name: 'Legacy speler', history: 20 }]));
-    await assertSucceeds(set(ref(anon(), 'team/matches'), []));
+  it('22. anonymous gebruiker kan team/ niet meer lezen of schrijven (legacy-gedrag gesloten)', async () => {
+    await assertFails(get(ref(anon(), 'team/players')));
+    await assertFails(set(ref(anon(), 'team/players'), [{ id: 1, name: 'Legacy speler', history: 20 }]));
+    await assertFails(set(ref(anon(), 'team/matches'), []));
   });
   it('22b. niet-ingelogde gebruiker kan team/ niet lezen of schrijven', async () => {
     await assertFails(get(ref(noAuth(), 'team/players')));

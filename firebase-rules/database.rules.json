@@ -1,11 +1,6 @@
 {
   "rules": {
 
-    "team": {
-      ".read": "auth != null",
-      ".write": "auth != null"
-    },
-
     "users": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid && auth.token.email_verified === true && auth.token.firebase.sign_in_provider !== 'anonymous'",
