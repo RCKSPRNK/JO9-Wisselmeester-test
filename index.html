@@ -1278,6 +1278,11 @@ header p:not(.header-team) { display:none; }
                 <button type="button" class="secondary" id="authLogoutVerified">Uitloggen</button>
             </div>
 
+            <div style="margin-top:18px; padding-top:12px; border-top:1px solid #e0e0e0;">
+                <button type="button" class="secondary" id="deleteAccountBtn">🗑️ Account verwijderen</button>
+                <div id="deleteAccountMessage" class="auth-message" style="display:none;"></div>
+            </div>
+
         </div>
 
     </div>
@@ -5167,7 +5172,8 @@ function watchPlayersFromFirebase(onCancel) {
         removeTrainer:     httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/removeTrainer"),
         leaveTeam:          httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/leaveTeam"),
         listTeamMembers:    httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/listTeamMembers"),
-        deleteTeam:         httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/deleteTeam")
+        deleteTeam:         httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/deleteTeam"),
+        deleteMyAccount:    httpsCallableFromURL(inviteFunctions, INVITE_FN_BASE + "/deleteMyAccount")
     };
 
     window.jo9Firebase = {
@@ -7524,6 +7530,74 @@ function watchPlayersFromFirebase(onCancel) {
         }
     }
 
+    // ---- Account volledig verwijderen (Firebase Auth + alle teams) ----
+    function showDeleteAccountMessage(type, text) {
+        const box = authEl("deleteAccountMessage");
+        if (!text) { box.style.display = "none"; return; }
+        box.className = "auth-message " + type;
+        box.textContent = text;
+        box.style.display = "block";
+    }
+
+    async function doDeleteMyAccount() {
+        const user = auth.currentUser;
+        if (!user || user.isAnonymous || !user.emailVerified) return;
+
+        const confirmed = confirm(
+            "Weet je zeker dat je je account volledig wilt verwijderen?\n\n" +
+            "Ben je van een team de enige eigenaar? Voeg dan eerst een andere " +
+            "trainer toe, of verwijder dat team handmatig - anders lukt deze " +
+            "actie niet.\n\n" +
+            "Deze actie kan niet ongedaan worden gemaakt."
+        );
+        if (!confirmed) return;
+
+        showDeleteAccountMessage("", "");
+
+        await withBusy(authEl("deleteAccountBtn"), async () => {
+
+            try {
+
+                await inviteCall.deleteMyAccount();
+
+            } catch (error) {
+
+                // failed-precondition (nog NIETS verwijderd) en internal
+                // (teamgegevens zijn mogelijk al wel verwerkt, maar het
+                // account zelf bestaat dan nog) geven allebei een specifieke,
+                // door de server opgestelde boodschap. Die tonen we letterlijk
+                // in plaats van de generieke foutmap, zodat precies duidelijk
+                // is wat er al dan niet is gebeurd.
+                const rawCode = error && error.code;
+                const code = rawCode ? rawCode.replace(/^functions\//, "") : rawCode;
+                const message =
+                    (code === "failed-precondition" || code === "internal") && error.message
+                        ? error.message
+                        : inviteErrorMessage(error);
+
+                showDeleteAccountMessage("error", message);
+
+                // NOOIT hieronder verder gaan: bij een fout is er geen
+                // geslaagde verwijdering om te melden of af te ronden.
+                return;
+
+            }
+
+            // Alleen hier, na een daadwerkelijk geslaagde serveraanroep:
+            // succes melden en de lokale sessie opruimen. De bestaande
+            // onAuthStateChanged-afhandeling verzorgt de terugkeer naar de
+            // starttoestand (anonieme sessie), net als bij "Uitloggen".
+            showDeleteAccountMessage("success", "Je account is verwijderd.");
+
+            try {
+                await signOut(auth);
+            } catch (error) {
+                console.error("doDeleteMyAccount: signOut na verwijdering mislukt:", error);
+            }
+
+        });
+    }
+
     // ---- owner-status van actief team (alleen eigen rol lezen) ----
     async function refreshInviteOwnerStatus() {
         const user = auth.currentUser;
@@ -7570,6 +7644,7 @@ function watchPlayersFromFirebase(onCancel) {
     authEl("trainerByEmailForm").addEventListener("submit", doAddTrainerByEmail);
     authEl("leaveTeamBtn").addEventListener("click", doLeaveTeam);
     authEl("deleteTeamBtn").addEventListener("click", doDeleteTeam);
+    authEl("deleteAccountBtn").addEventListener("click", doDeleteMyAccount);
 
 </script>
 

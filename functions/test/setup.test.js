@@ -22,7 +22,7 @@ try {
   throw new Error('functions/index.js kon niet geladen worden: ' + e.message);
 }
 
-const ENDPOINTS = ['addTrainerByEmail', 'removeTrainer', 'leaveTeam', 'listTeamMembers', 'deleteTeam'];
+const ENDPOINTS = ['addTrainerByEmail', 'removeTrainer', 'leaveTeam', 'listTeamMembers', 'deleteTeam', 'deleteMyAccount'];
 
 // ---- auth-tokens die de handler verwacht (pariteit met RTDB Rules) ----------
 const authVerified = (uid) => ({
@@ -78,6 +78,10 @@ function makeAuthMock(table) {
       const u = uidMap[uid];
       if (!u) throw mkNotFound();
       return u;
+    },
+    deleteUser: async (uid) => {
+      if (!uidMap[uid]) throw mkNotFound();
+      delete uidMap[uid];
     }
   };
 }
@@ -458,5 +462,212 @@ describe('deleteTeam', () => {
     // teamB intact
     assert.strictEqual(await snapVal('teams/teamB/members/otherOwner'), 'owner');
     assert.strictEqual(await snapVal('users/otherOwner/teams/teamB'), true);
+  });
+});
+
+// ===========================================================================
+describe('deleteMyAccount', () => {
+  it('geen auth -> unauthenticated', async () => {
+    await rejectsWith(run('deleteMyAccount', undefined, {}), 'unauthenticated');
+  });
+
+  it('anoniem -> permission-denied', async () => {
+    await rejectsWith(run('deleteMyAccount', authAnon('a1'), {}), 'permission-denied');
+  });
+
+  it('onbevestigd -> permission-denied', async () => {
+    await rejectsWith(run('deleteMyAccount', authUnverified('u1'), {}), 'permission-denied');
+  });
+
+  it('trainer verwijdert eigen account; gedeelde teamgegevens blijven behouden', async () => {
+    await mock.ref('teams/teamA/players').set({ p1: { id: '1', name: 'Jan Jansen', history: 0 } });
+    await mock.ref('teams/teamA/matches').set([{ matchNumber: 1 }]);
+    await mock.ref('users/trainerA/teams/teamA').set(true);
+
+    const r = await run('deleteMyAccount', authVerified('trainerA'), {});
+    assert.strictEqual(r.deleted, true);
+    assert.strictEqual(r.teamsHandled.length, 1);
+    assert.strictEqual(r.teamsHandled[0].role, 'trainer');
+    assert.strictEqual(r.teamsHandled[0].transferred, false);
+
+    assert.strictEqual(await snapVal('teams/teamA/members/trainerA'), null);
+    assert.strictEqual(await snapVal('users/trainerA/teams/teamA'), null);
+    // Owner en gedeelde teamgegevens (spelers, wedstrijden) onaangeroerd
+    assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), 'owner');
+    assert.deepStrictEqual(await snapVal('teams/teamA/players'), { p1: { id: '1', name: 'Jan Jansen', history: 0 } });
+    assert.deepStrictEqual(await snapVal('teams/teamA/matches'), [{ matchNumber: 1 }]);
+    // Het Auth-account zelf is weg
+    await rejectsWith(authMock.getUser('trainerA'), 'auth/user-not-found');
+  });
+
+  it('owner met andere trainer draagt eigendom correct over', async () => {
+    await run('addTrainerByEmail', authVerified('ownerA'), { teamId: 'teamA', email: 'newtrainer@test.nl' });
+    await mock.ref('users/ownerA/teams/teamA').set(true);
+
+    const r = await run('deleteMyAccount', authVerified('ownerA'), {});
+    assert.strictEqual(r.deleted, true);
+    assert.strictEqual(r.teamsHandled.length, 1);
+    assert.strictEqual(r.teamsHandled[0].transferred, true);
+    assert.strictEqual(r.teamsHandled[0].newOwnerId, 'newTrainer');
+
+    assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), null);
+    assert.strictEqual(await snapVal('users/ownerA/teams/teamA'), null);
+    assert.strictEqual(await snapVal('teams/teamA/members/newTrainer'), 'owner');
+    assert.strictEqual(await snapVal('teams/teamA/members/trainerA'), 'trainer');
+  });
+
+  it('owner zonder opvolger wordt geblokkeerd zonder enige databasewijziging', async () => {
+    // trainerA (de enige andere trainer) verlaat eerst, zodat ownerA echt
+    // de enige eigenaar zonder opvolger is.
+    await run('leaveTeam', authVerified('trainerA'), { teamId: 'teamA' });
+    await mock.ref('users/ownerA/teams/teamA').set(true);
+
+    const before = await snapVal('teams/teamA');
+    const beforeIndex = await snapVal('users/ownerA/teams/teamA');
+
+    await rejectsWith(run('deleteMyAccount', authVerified('ownerA'), {}), 'failed-precondition');
+
+    assert.deepStrictEqual(await snapVal('teams/teamA'), before);
+    assert.strictEqual(await snapVal('users/ownerA/teams/teamA'), beforeIndex);
+    assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), 'owner');
+    // Account bestaat nog (niets is uitgevoerd)
+    const stillThere = await authMock.getUser('ownerA');
+    assert.strictEqual(stillThere.uid, 'ownerA');
+  });
+
+  it('solo-eigenaar in een multi-team-situatie blokkeert alles; volledige database ongewijzigd', async () => {
+    // teamA: ownerA is hier straks de ENIGE eigenaar (trainerA vertrekt eerst).
+    await run('leaveTeam', authVerified('trainerA'), { teamId: 'teamA' });
+    await mock.ref('users/ownerA/teams/teamA').set(true);
+
+    // teamC: ownerA is hier OOK owner, maar MET een andere trainer - op
+    // zichzelf zou dit team dus prima verwerkt kunnen worden.
+    await mock.ref('teams/teamC').set({
+      createdAt: 1,
+      createdBy: 'ownerA',
+      clubName: 'Club C',
+      teamName: 'JO9-3',
+      season: '2026/2027',
+      members: { ownerA: 'owner', newTrainer: 'trainer' }
+    });
+    await mock.ref('users/ownerA/teams/teamC').set(true);
+
+    const before = JSON.parse(JSON.stringify(await snapVal('')));
+
+    await rejectsWith(run('deleteMyAccount', authVerified('ownerA'), {}), 'failed-precondition');
+
+    const after = JSON.parse(JSON.stringify(await snapVal('')));
+    // GEEN enkel pad gewijzigd - ook niet teamC, dat zonder het geblokkeerde
+    // teamA op zichzelf wel had kunnen slagen.
+    assert.deepStrictEqual(after, before);
+    // Expliciet ook teamC's ongewijzigde staat losstaand bevestigen.
+    assert.strictEqual(await snapVal('teams/teamC/members/ownerA'), 'owner');
+    assert.strictEqual(await snapVal('users/ownerA/teams/teamC'), true);
+  });
+
+  it('gebruiker met meerdere teams: beide teams in één aanroep correct afgehandeld', async () => {
+    await mock.ref('teams/teamB').set({
+      createdAt: 1,
+      createdBy: 'trainerA',
+      clubName: 'Club B',
+      teamName: 'JO9-2',
+      season: '2026/2027',
+      members: { trainerA: 'owner', newTrainer: 'trainer' }
+    });
+    await mock.ref('users/trainerA/teams/teamA').set(true);
+    await mock.ref('users/trainerA/teams/teamB').set(true);
+
+    const r = await run('deleteMyAccount', authVerified('trainerA'), {});
+    assert.strictEqual(r.deleted, true);
+    assert.strictEqual(r.teamsHandled.length, 2);
+
+    // teamA: trainerA vertrokken als trainer, owner onaangeroerd
+    assert.strictEqual(await snapVal('teams/teamA/members/trainerA'), null);
+    assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), 'owner');
+    // teamB: eigendom overgedragen aan newTrainer
+    assert.strictEqual(await snapVal('teams/teamB/members/trainerA'), null);
+    assert.strictEqual(await snapVal('teams/teamB/members/newTrainer'), 'owner');
+    assert.strictEqual(await snapVal('users/trainerA/teams/teamA'), null);
+    assert.strictEqual(await snapVal('users/trainerA/teams/teamB'), null);
+  });
+
+  it('request.data wordt genegeerd: kan geen account of teamgegevens van iemand anders raken', async () => {
+    await mock.ref('users/trainerA/teams/teamA').set(true);
+
+    const r = await run(
+      'deleteMyAccount',
+      authVerified('trainerA'),
+      { uid: 'ownerA', teamId: 'teamA' } // bewust een vreemde uid/teamId meegeven
+    );
+
+    assert.strictEqual(r.uid, 'trainerA');
+    assert.strictEqual(await snapVal('teams/teamA/members/trainerA'), null);
+    // ownerA volledig onaangeroerd, zowel in de database als in Auth
+    assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), 'owner');
+    const ownerStillThere = await authMock.getUser('ownerA');
+    assert.strictEqual(ownerStillThere.uid, 'ownerA');
+  });
+
+  it('herhaalde aanroep na mislukte auth.deleteUser is veilig (idempotent herstel)', async () => {
+    await mock.ref('users/trainerA/teams/teamA').set(true);
+
+    const originalDeleteUser = authMock.deleteUser;
+    authMock.deleteUser = async () => { throw new Error('tijdelijke fout'); };
+
+    await rejectsWith(run('deleteMyAccount', authVerified('trainerA'), {}), 'internal');
+
+    // RTDB-kant is al wel volledig afgehandeld.
+    assert.strictEqual(await snapVal('teams/teamA/members/trainerA'), null);
+    assert.strictEqual(await snapVal('users/trainerA/teams/teamA'), null);
+    assert.strictEqual(await snapVal('teams/teamA/members/ownerA'), 'owner');
+    // Account bestaat nog (deleteUser mislukte)
+    const stillThere = await authMock.getUser('trainerA');
+    assert.strictEqual(stillThere.uid, 'trainerA');
+
+    // Herstel: deleteUser werkt nu weer -> herhaalde aanroep rondt veilig af.
+    authMock.deleteUser = originalDeleteUser;
+    const r2 = await run('deleteMyAccount', authVerified('trainerA'), {});
+    assert.strictEqual(r2.deleted, true);
+    assert.strictEqual(r2.teamsHandled.length, 0); // geen teams meer over
+    await rejectsWith(authMock.getUser('trainerA'), 'auth/user-not-found');
+  });
+
+  it('mislukte database-update: auth.deleteUser wordt niet aangeroepen, geen gedeeltelijke writes', async () => {
+    await mock.ref('users/trainerA/teams/teamA').set(true);
+
+    // Simuleer een mislukte atomaire update door alleen de root-update()
+    // (db.ref().update(...)) te laten falen; losse reads blijven normaal
+    // werken zodat de rest van de functie gewoon doorloopt tot die ene call.
+    const originalRef = mock.ref.bind(mock);
+    mock.ref = (path) => {
+      const handle = originalRef(path);
+      if (!path) {
+        return { ...handle, update: async () => { throw new Error('simulated db failure'); } };
+      }
+      return handle;
+    };
+
+    let deleteUserCalls = 0;
+    const originalDeleteUser = authMock.deleteUser;
+    authMock.deleteUser = async (uid) => {
+      deleteUserCalls++;
+      return originalDeleteUser(uid);
+    };
+
+    const before = JSON.parse(JSON.stringify(await snapVal('')));
+
+    await rejectsWith(run('deleteMyAccount', authVerified('trainerA'), {}), 'internal');
+
+    assert.strictEqual(deleteUserCalls, 0, 'auth.deleteUser mag niet zijn aangeroepen na een mislukte database-update');
+
+    const after = JSON.parse(JSON.stringify(await snapVal('')));
+    assert.deepStrictEqual(after, before, 'geen enkele gedeeltelijke databasewijziging toegestaan');
+
+    // Account bestaat nog, lidmaatschap is onaangeroerd.
+    const stillThere = await authMock.getUser('trainerA');
+    assert.strictEqual(stillThere.uid, 'trainerA');
+    assert.strictEqual(await snapVal('teams/teamA/members/trainerA'), 'trainer');
+
+    mock.ref = originalRef;
   });
 });
