@@ -409,6 +409,108 @@ exports.deleteTeam = onCall({ region: 'europe-west1' }, async (request) => {
 });
 
 /*
+ * Eigen account volledig verwijderen (self-service — werkt uitsluitend op
+ * request.auth.uid, leest/accepteert GEEN uid/teamId uit request.data, dus
+ * een aanroeper kan structureel nooit het account of de teams van iemand
+ * anders raken).
+ *
+ * Verwerkt alle teams uit users/{uid}/teams volgens dezelfde regels als
+ * leaveTeam: trainer -> lidmaatschap + index weg; owner mét andere trainer
+ * -> dezelfde deterministische (key-order) eigendomsoverdracht; owner ZONDER
+ * andere trainer -> failed-precondition, en dat gebeurt VOORDAT er voor
+ * ook maar één team geschreven wordt (de daadwerkelijke RTDB-write is één
+ * enkele atomaire multi-path-update aan het eind van de functie).
+ *
+ * Herstel bij een mislukte auth.deleteUser: de RTDB-update is op dat moment
+ * al voltooid (alle teams correct verwerkt), dus een herhaalde aanroep is
+ * veilig — users/{uid}/teams is dan leeg, de lus doet niets, en de functie
+ * springt direct door naar auth.deleteUser(uid).
+ */
+exports.deleteMyAccount = onCall({ region: 'europe-west1' }, async (request) => {
+  const callerUid = requireVerifiedAccount(request);
+  const db = getDb();
+  const auth = getAuthInstance();
+
+  const indexSnap = await db.ref('users/' + callerUid + '/teams').once('value');
+  const indexVal = indexSnap.val() || {};
+  const teamIds = Object.keys(indexVal)
+    .filter(id => indexVal[id] === true && isValidTeamId(id))
+    .sort();
+
+  const updates = {};
+  const teamsHandled = [];
+
+  for (const teamId of teamIds) {
+    const memberSnap = await db.ref('teams/' + teamId + '/members/' + callerUid).once('value');
+    const role = memberSnap.val();
+
+    if (!role) {
+      // Verweesde index-ingang (team/lidmaatschap bestaat niet meer):
+      // alleen de eigen index-ingang opruimen.
+      updates['users/' + callerUid + '/teams/' + teamId] = null;
+      continue;
+    }
+
+    if (role === 'trainer') {
+      updates['teams/' + teamId + '/members/' + callerUid] = null;
+      updates['users/' + callerUid + '/teams/' + teamId] = null;
+      teamsHandled.push({ teamId: teamId, role: 'trainer', transferred: false });
+      continue;
+    }
+
+    // role === 'owner': zelfde opvolger-logica als leaveTeam.
+    const membersSnap = await db.ref('teams/' + teamId + '/members').once('value');
+    const members = membersSnap.val() || {};
+
+    let newOwnerUid = null;
+    for (const uid of Object.keys(members).sort()) {
+      if (uid !== callerUid && members[uid] === 'trainer') {
+        newOwnerUid = uid;
+        break;
+      }
+    }
+
+    if (!newOwnerUid) {
+      // Fail-fast: nog NIETS geschreven voor dit of enig ander team in deze
+      // aanroep (de update hieronder wordt nooit bereikt).
+      throw new HttpsError(
+        'failed-precondition',
+        'Je bent enige eigenaar van team ' + teamId + '. Voeg eerst een ' +
+        'andere trainer toe, of verwijder het team handmatig, voordat je ' +
+        'je account verwijdert.'
+      );
+    }
+
+    updates['teams/' + teamId + '/members/' + newOwnerUid] = 'owner';
+    updates['teams/' + teamId + '/members/' + callerUid] = null;
+    updates['users/' + callerUid + '/teams/' + teamId] = null;
+    teamsHandled.push({
+      teamId: teamId, role: 'owner', transferred: true, newOwnerId: newOwnerUid
+    });
+  }
+
+  if (Object.keys(updates).length > 0) {
+    try {
+      await db.ref().update(updates);
+    } catch (e) {
+      throw new HttpsError('internal',
+        'Kon teamgegevens niet bijwerken vóór accountverwijdering: ' +
+        (e.message || e.code));
+    }
+  }
+
+  try {
+    await auth.deleteUser(callerUid);
+  } catch (e) {
+    throw new HttpsError('internal',
+      'Teamgegevens zijn verwerkt, maar het account kon niet worden ' +
+      'verwijderd: ' + (e.message || e.code) + '. Probeer het opnieuw.');
+  }
+
+  return { uid: callerUid, teamsHandled: teamsHandled, deleted: true };
+});
+
+/*
  * ---------------------------------------------------------------------------
  * Mock‑infrastructuur (lokale unit‑tests; in runtime is dit echte Admin SDK)
  * ---------------------------------------------------------------------------
