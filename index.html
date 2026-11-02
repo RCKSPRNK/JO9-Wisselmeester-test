@@ -898,7 +898,26 @@ header p:not(.header-team) { display:none; }
     <p class="header-team" id="brandClubTeam"></p>
     <p>Automatisch en eerlijk wisselschema</p>
 </header>
+<div class="card" id="visitorWelcome">
+    <h2>Welkom bij Wisselmeester</h2>
+    <p>
+        Bekijk rustig wat Wisselmeester kan. Je kunt als bezoeker
+        door de app bladeren. Voor je eigen teams en accountgegevens
+        kun je inloggen of een account aanmaken.
+    </p>
 
+    <div class="auth-actions">
+        <button type="button" class="primary" id="welcomeLogin">
+            Inloggen
+        </button>
+        <button type="button" class="secondary" id="welcomeRegister">
+            Account aanmaken
+        </button>
+        <button type="button" class="secondary" id="welcomeGuest">
+            Verder als bezoeker
+        </button>
+    </div>
+</div>
 <div class="card home-menu" id="homeMenu">
     <div class="home-menu-heading"><h2>Hoofdmenu</h2><span class="active-team-badge home-active-team-badge" data-active-team-label hidden></span></div>
     <div class="home-menu-grid">
@@ -7657,6 +7676,70 @@ function watchPlayersFromFirebase(onCancel) {
 </nav>
 
 <script>
+(function setupVisitorWelcome() {
+    const welcome = document.getElementById("visitorWelcome");
+    const homeMenu = document.getElementById("homeMenu");
+
+    const loginButton = document.getElementById("welcomeLogin");
+    const registerButton = document.getElementById("welcomeRegister");
+    const guestButton = document.getElementById("welcomeGuest");
+
+    if (!welcome || !homeMenu) return;
+
+    function openAccount(tab) {
+        const managementButton = document.querySelector(
+            '[data-view="management"]'
+        );
+
+        const authBody = document.getElementById("authBody");
+        const authToggle = document.getElementById("authToggle");
+
+        const authTab = document.getElementById(
+            tab === "register" ? "authTabRegister" : "authTabLogin"
+        );
+
+        // Controleer of de benodigde bestaande onderdelen aanwezig zijn.
+        if (!managementButton || !authBody || !authToggle || !authTab) {
+            console.error(
+                "Wisselmeester: accountonderdelen niet gevonden."
+            );
+            return;
+        }
+
+        // Open Instellingen.
+        managementButton.click();
+
+        // Open de accountsectie als deze nog gesloten is.
+        if (authBody.style.display !== "block") {
+            authToggle.click();
+        }
+
+        // Kies Inloggen of Account aanmaken.
+        authTab.click();
+
+        // Verberg de welkomstkaart pas nadat de acties zijn uitgevoerd.
+        welcome.style.display = "none";
+    }
+
+    if (loginButton) {
+        loginButton.addEventListener("click", () => {
+            openAccount("login");
+        });
+    }
+
+    if (registerButton) {
+        registerButton.addEventListener("click", () => {
+            openAccount("register");
+        });
+    }
+
+    if (guestButton) {
+        guestButton.addEventListener("click", () => {
+            welcome.style.display = "none";
+            homeMenu.style.display = "block";
+        });
+    }
+})();
 (function setupHomeMenu() {
     const viewIds = {
         match: ["newMatchCard", "scheduleSection"],
