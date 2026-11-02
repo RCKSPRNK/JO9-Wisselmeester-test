@@ -913,9 +913,6 @@ header p:not(.header-team) { display:none; }
         <button type="button" class="secondary" id="welcomeRegister">
             Account aanmaken
         </button>
-        <button type="button" class="secondary" id="welcomeGuest">
-            Verder als bezoeker
-        </button>
     </div>
 </div>
 <div class="card home-menu" id="homeMenu">
@@ -7158,7 +7155,13 @@ function watchPlayersFromFirebase(onCancel) {
     let anonymousPending = false;
 
     onAuthStateChanged(auth, user => {
+        // Welkomstkaart alleen tonen bij een anonieme/bezoekerssessie.
+        const visitorWelcome = document.getElementById("visitorWelcome");
 
+        if (visitorWelcome) {
+            visitorWelcome.style.display =
+                user && !user.isAnonymous ? "none" : "block";
+        }
         renderAuthUI(user);
 
         // Mijn teams: eerst de teamvoorkeur bepalen (zet restorePending
@@ -7678,13 +7681,11 @@ function watchPlayersFromFirebase(onCancel) {
 <script>
 (function setupVisitorWelcome() {
     const welcome = document.getElementById("visitorWelcome");
-    const homeMenu = document.getElementById("homeMenu");
 
     const loginButton = document.getElementById("welcomeLogin");
     const registerButton = document.getElementById("welcomeRegister");
-    const guestButton = document.getElementById("welcomeGuest");
 
-    if (!welcome || !homeMenu) return;
+    if (!welcome) return;
 
     function openAccount(tab) {
         const managementButton = document.querySelector(
@@ -7717,7 +7718,7 @@ function watchPlayersFromFirebase(onCancel) {
         // Kies Inloggen of Account aanmaken.
         authTab.click();
 
-        // Verberg de welkomstkaart pas nadat de acties zijn uitgevoerd.
+        // Verberg de welkomstkaart.
         welcome.style.display = "none";
     }
 
@@ -7730,13 +7731,6 @@ function watchPlayersFromFirebase(onCancel) {
     if (registerButton) {
         registerButton.addEventListener("click", () => {
             openAccount("register");
-        });
-    }
-
-    if (guestButton) {
-        guestButton.addEventListener("click", () => {
-            welcome.style.display = "none";
-            homeMenu.style.display = "block";
         });
     }
 })();
